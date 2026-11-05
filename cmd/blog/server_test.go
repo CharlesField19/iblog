@@ -33,7 +33,7 @@ func testServer(t *testing.T) *server {
 		_ = os.Setenv("BLOG_ADMIN_PASSWORD", oldPassword)
 		_ = os.Setenv("BLOG_JWT_SECRET", oldSecret)
 	})
-	return &server{db: db, webDist: "../../frontend/web/dist", adminDist: "../../frontend/admin/dist", loginFailures: make(map[string]loginFailure)}
+	return &server{db: db, webDist: "../../frontend/web/dist-rebuilt", adminDist: "../../frontend/admin/dist-rebuilt", loginFailures: make(map[string]loginFailure)}
 }
 func call(t *testing.T, h http.Handler, method, path string, body any, token string) (int, map[string]any) {
 	t.Helper()
