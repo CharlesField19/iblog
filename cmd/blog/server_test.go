@@ -189,7 +189,22 @@ func TestCleanInstallAssetsAndCRUD(t *testing.T) {
 	if code, _ := call(t, h, "POST", "/api/v1/auth/setup", map[string]any{"username": "testadmin", "password": "test-password-123"}, ""); code != 201 {
 		t.Fatalf("setup status=%d", code)
 	}
-	for _, path := range []string{"/", "/admin/", "/assets/index-D5Lrp8y2.js", "/admin/assets/index-2aPgEh4H.js", "/admin/login"} {
+	webAssets, err := filepath.Glob(filepath.Join(s.webDist, "assets", "*.js"))
+	if err != nil || len(webAssets) == 0 {
+		t.Fatalf("find built web assets: files=%v err=%v", webAssets, err)
+	}
+	adminAssets, err := filepath.Glob(filepath.Join(s.adminDist, "assets", "*.js"))
+	if err != nil || len(adminAssets) == 0 {
+		t.Fatalf("find built admin assets: files=%v err=%v", adminAssets, err)
+	}
+	paths := []string{"/", "/admin/", "/admin/login"}
+	for _, asset := range webAssets {
+		paths = append(paths, "/assets/"+filepath.Base(asset))
+	}
+	for _, asset := range adminAssets {
+		paths = append(paths, "/admin/assets/"+filepath.Base(asset))
+	}
+	for _, path := range paths {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		if w.Code != 200 || w.Body.Len() == 0 {
