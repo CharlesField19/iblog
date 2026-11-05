@@ -61,18 +61,3 @@ docker compose logs --tail=100 blog
 ```
 
 回滚时把 `image:` 改回先前版本，再执行相同命令。若新版本已迁移数据库，回滚前先确认旧版本兼容当前数据库；必要时从备份恢复。
-
-## 发布流程（维护者）
-
-向 `main` 推送代码会触发 CI。发布新镜像时，先确认 CI 通过，再推送版本标签，例如：
-
-```sh
-git tag v1.0.1
-git push origin v1.0.1
-```
-
-Actions 会在标签发布时测试并构建 `linux/amd64` 镜像，推送 `ghcr.io/charlesfield19/iblog:v1.0.1` 和 `ghcr.io/charlesfield19/iblog:latest`。如需免登录拉取，可在 GitHub Packages 中设置容器包的访问权限。
-
-## 本地验证
-
-CI 会运行 Go 测试、`go vet` 和 Vue 前端构建。Docker 镜像也在 Actions 中构建；服务器部署不需要本地构建步骤。`compose.yaml` 使用已发布的 GHCR 镜像，不是源码构建配置。
