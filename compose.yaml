@@ -1,10 +1,10 @@
 services:
   blog:
-    image: ghcr.io/${GHCR_OWNER:?Set GHCR_OWNER}/iblog:${IBLOG_VERSION:-v1.0.0}
+    image: ghcr.io/charlesfield19/iblog:v1.0.0
     container_name: iblog
     restart: unless-stopped
     ports:
-      - "${BLOG_PORT:-11190}:11190"
+      - "11190:11190"
     volumes:
       - blog_data:/data
     environment:
