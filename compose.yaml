@@ -1,0 +1,25 @@
+services:
+  blog:
+    image: ghcr.io/${GHCR_OWNER:?Set GHCR_OWNER}/iblog:${IBLOG_VERSION:-v1.0.0}
+    container_name: iblog
+    restart: unless-stopped
+    ports:
+      - "${BLOG_PORT:-11190}:11190"
+    volumes:
+      - blog_data:/data
+    environment:
+      BLOG_ADDR: ":11190"
+      BLOG_DB_PATH: /data/blog.db
+      BLOG_WEB_DIST: /app/static/web
+      BLOG_ADMIN_DIST: /app/static/admin
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:11190/api/v1/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+    stop_grace_period: 15s
+
+volumes:
+  blog_data:
+    name: iblog_data
