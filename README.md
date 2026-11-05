@@ -6,7 +6,7 @@ iBlog 是一个 Go + Vue 博客应用。正式部署使用 GitHub Actions 构建
 
 - 已发布的镜像：`ghcr.io/charlesfield19/iblog`
 - 服务器已安装 Docker Engine 和 Docker Compose 插件。
-- GHCR 镜像若设为 Public，服务器无需登录 GHCR；若为 Private，需先在服务器执行 `docker login ghcr.io`。
+- 如果拉取镜像时 GHCR 要求认证，请先在服务器登录 GHCR，并确保账号有镜像读取权限。
 
 > 当前版本镜像只有在 GitHub Actions 的 CI 通过并推送版本标签后才会发布。版本标签工作流会运行测试、构建镜像，并推送版本标签和 `latest`。
 
@@ -71,7 +71,7 @@ git tag v1.0.1
 git push origin v1.0.1
 ```
 
-Actions 会在标签发布时测试并构建 `linux/amd64` 镜像，推送 `ghcr.io/charlesfield19/iblog:v1.0.1` 和 `ghcr.io/charlesfield19/iblog:latest`。首次发布后，如需免登录拉取，请在 GitHub Packages 中将容器包可见性设为 Public。
+Actions 会在标签发布时测试并构建 `linux/amd64` 镜像，推送 `ghcr.io/charlesfield19/iblog:v1.0.1` 和 `ghcr.io/charlesfield19/iblog:latest`。如需免登录拉取，可在 GitHub Packages 中设置容器包的访问权限。
 
 ## 本地验证
 
