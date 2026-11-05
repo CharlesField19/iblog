@@ -8,3 +8,5 @@ CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username
 CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_articles_status_published ON articles(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_article_tags_tag ON article_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_articles_updated ON articles(updated_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_published ON articles(published_at DESC, id DESC);

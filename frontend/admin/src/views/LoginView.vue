@@ -27,12 +27,12 @@ async function submit() {
 
 <template>
   <main class="login-wrap"><section class="login-card">
-    <div class="login-logo"><span class="logo-letter">C</span></div><h1>{{ setupRequired ? '初始化博客' : '博客管理' }}</h1>
+    <h1>{{ setupRequired ? '初始化博客' : '博客管理' }}</h1>
     <p v-if="setupRequired" class="setup-copy">首次使用，请创建管理员账号。</p>
-    <p v-if="checking" class="setup-copy">正在检查安装状态…</p>
+      <p v-if="checking" class="setup-copy" role="status">正在检查安装状态…</p>
     <form v-else @submit.prevent="submit">
-      <div class="field"><label for="username">用户名</label><input id="username" v-model="username" autocomplete="username" placeholder="用户名" required></div>
-      <div class="field"><label for="password">{{ setupRequired ? '设置密码' : '密码' }}</label><input id="password" v-model="password" type="password" :autocomplete="setupRequired ? 'new-password' : 'current-password'" :placeholder="setupRequired ? '至少 8 个字符' : '密码'" :minlength="setupRequired ? 8 : undefined" required></div>
+        <div class="field"><label for="username">用户名</label><input id="username" v-model="username" name="username" autocomplete="username" spellcheck="false" placeholder="请输入用户名" required></div>
+        <div class="field"><label for="password">{{ setupRequired ? '设置密码' : '密码' }}</label><input id="password" v-model="password" name="password" type="password" :autocomplete="setupRequired ? 'new-password' : 'current-password'" :placeholder="setupRequired ? '至少 8 个字符' : '请输入密码'" :minlength="setupRequired ? 8 : undefined" required></div>
       <p v-if="error" class="login-error" role="alert">{{ error }}</p>
       <button class="btn login-btn" :disabled="loading">{{ loading ? (setupRequired ? '创建中…' : '登录中…') : (setupRequired ? '创建管理员账号' : '登录') }}</button>
     </form>

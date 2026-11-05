@@ -9,7 +9,7 @@ async function changePassword(){if(next.value.length<8){toast('error','新密码
 </script>
 
 <template>
-  <main class="admin-main"><div class="list-head"><h1>账号管理</h1></div><div class="stack">
+  <main id="admin-content" class="admin-main" tabindex="-1"><div class="list-head"><h1>账号管理</h1></div><div class="stack">
     <section class="card section-card"><h2 class="section-title">修改用户名</h2><form class="account-form" @submit.prevent="changeUsername"><div class="field"><label for="new-username">新用户名</label><input id="new-username" v-model="username" autocomplete="username" placeholder="3-32位字母数字-_" required></div><p class="section-hint">3-32 位，仅限字母、数字、- 和 _。</p><button class="btn" :disabled="savingName">{{ savingName?'保存中…':'保存用户名' }}</button></form></section>
     <section class="card section-card"><h2 class="section-title">修改密码</h2><form class="account-form" @submit.prevent="changePassword"><div class="field"><label for="current-password">当前密码</label><input id="current-password" v-model="current" type="password" autocomplete="current-password" required></div><div class="field"><label for="new-password">新密码</label><input id="new-password" v-model="next" type="password" autocomplete="new-password" minlength="8" required></div><p class="section-hint">至少 8 位。</p><div class="field"><label for="confirm-password">确认新密码</label><input id="confirm-password" v-model="confirmPassword" type="password" autocomplete="new-password" required></div><button class="btn" :disabled="savingPassword">{{ savingPassword?'保存中…':'保存密码' }}</button></form></section>
   </div></main>

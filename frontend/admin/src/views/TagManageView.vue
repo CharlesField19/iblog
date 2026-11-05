@@ -12,10 +12,10 @@ async function remove(item){if(!confirm(`删除标签「${item.name}」？`))ret
 </script>
 
 <template>
-  <main class="admin-main"><div class="list-head"><h1>标签管理</h1></div>
-    <section class="card tag-form"><h2 class="form-title">新建标签</h2><form class="inline-form" @submit.prevent="create"><input v-model="name" class="chip-input" maxlength="50" placeholder="如：Go" aria-label="新标签名称"><button class="btn" type="submit">添加</button></form></section>
+  <main id="admin-content" class="admin-main" tabindex="-1"><div class="list-head"><h1>标签管理</h1></div>
+    <section class="card tag-form"><h2 class="form-title">新建标签</h2><form class="inline-form" @submit.prevent="create"><input v-model="name" class="chip-input" maxlength="24" placeholder="例如：Go…" aria-label="新标签名称" autocomplete="off"><button class="btn" type="submit">添加</button></form></section>
     <p v-if="error" class="card error-card" role="alert">{{ error }} <button class="link-btn" @click="load">重试</button></p>
     <div v-else-if="loading" class="card skeleton">加载中…</div><div v-else-if="!items.length" class="card empty-state">还没有标签。</div>
-    <div v-else class="stack"><section v-for="item in items" :key="item.id" class="card admin-row tag-row"><div class="row-main"><template v-if="editId===item.id"><form class="inline-form" @submit.prevent="saveEdit"><input v-model="editName" class="chip-input" maxlength="50" aria-label="编辑标签名"><button class="btn btn-sm">保存</button><button class="btn btn-secondary btn-sm" type="button" @click="editId=null">取消</button></form></template><template v-else><h3 class="row-title">{{ item.name }}</h3><span class="tag-unused">{{ item.count }} 篇文章</span></template></div><div v-if="editId!==item.id" class="row-actions"><button class="link-btn" @click="startEdit(item)">编辑</button><button class="link-btn danger" @click="remove(item)">删除</button></div></section></div>
+    <div v-else class="stack"><section v-for="item in items" :key="item.id" class="card admin-row tag-row"><div class="row-main"><template v-if="editId===item.id"><form class="inline-form" @submit.prevent="saveEdit"><input v-model="editName" class="chip-input" maxlength="24" aria-label="编辑标签名"><button class="btn btn-sm">保存</button><button class="btn btn-secondary btn-sm" type="button" @click="editId=null">取消</button></form></template><template v-else><h3 class="row-title">{{ item.name }}</h3><span class="tag-unused">{{ item.count }} 篇文章</span></template></div><div v-if="editId!==item.id" class="row-actions"><button class="link-btn" @click="startEdit(item)">编辑</button><button class="link-btn danger" @click="remove(item)">删除</button></div></section></div>
   </main>
 </template>

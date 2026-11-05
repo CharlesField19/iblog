@@ -30,7 +30,7 @@ onBeforeUnmount(() => clearTimeout(timer))
 <template>
   <section class="page-head"><div class="container"><h1>文章</h1><p class="sub">这里是我的文字。偶尔更新，尽量真诚。</p></div></section>
   <section class="section"><div class="container">
-    <label class="search-box"><span aria-hidden="true">⌕</span><input v-model="search" type="search" placeholder="搜索文章标题、标签或摘要..." aria-label="搜索文章"></label>
+    <label class="search-box"><span class="search-icon" aria-hidden="true">⌕</span><input v-model="search" type="search" placeholder="搜索文章标题、标签或摘要…" aria-label="搜索文章" autocomplete="off"></label>
     <div v-if="tags.length" class="skill-list filter-tags"><button v-for="tag in tags" :key="tag.name" class="chip" :class="{ selected: selected === tag.name }" @click="select(tag.name)">{{ tag.name }} <span class="tag-count">{{ tag.count }}</span></button></div>
     <p v-if="loading" class="muted">正在加载…</p>
     <div v-else-if="error" role="alert"><p>{{ error }}</p><button class="btn" @click="load">重试</button></div>

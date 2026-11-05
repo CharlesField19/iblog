@@ -32,26 +32,10 @@
   color:#fff
 }
 @media (width<=640px){
-  .brand-text{
-  display:none
-}
 .nav-inner{
   padding:0 16px
 }
 
-}
-.login-logo{
-  justify-content:center;
-  align-items:center;
-  display:flex
-}
-.logo-letter{
-  color:#fff;
-  -webkit-user-select:none;
-  user-select:none;
-  font-family:Segoe UI,system-ui,sans-serif;
-  font-size:28px;
-  font-weight:700
 }
 .chips{
   flex-wrap:wrap;
@@ -720,7 +704,7 @@ a{
   font-family:inherit;
   font-size:13.5px;
   font-weight:500;
-  transition:all .2s;
+  transition:color .2s,background-color .2s,border-color .2s;
   display:inline-flex
 }
 .pill:hover{
@@ -845,7 +829,7 @@ a{
   padding:7px 20px;
   font-size:14px;
   font-weight:500;
-  transition:all .2s;
+  transition:color .2s,background-color .2s,border-color .2s;
   display:inline-flex
 }
 .radio-pills input:checked+span{
@@ -1005,14 +989,6 @@ a{
   text-align:center;
   border-radius:22px;
   padding:38px 34px
-}
-.login-logo{
-  background:linear-gradient(135deg,#0a84ff,#64d2ff);
-  border-radius:16px;
-  width:56px;
-  height:56px;
-  margin:0 auto 18px;
-  box-shadow:0 8px 24px #0a84ff52
 }
 .login-card h1{
   letter-spacing:-.02em;
@@ -1221,5 +1197,3 @@ to{
 }
 
 }
-
-

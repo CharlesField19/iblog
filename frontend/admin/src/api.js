@@ -7,7 +7,7 @@ export async function adminRequest(path, options = {}) {
   } catch (error) {
     if (error instanceof ApiError && error.status === 401 && !path.includes('/api/v1/auth/login')) {
       clearSession()
-      window.location.assign('/admin/login')
+      if (window.location.pathname !== '/admin/login') window.location.assign('/admin/login?expired=1')
     }
     throw error
   }

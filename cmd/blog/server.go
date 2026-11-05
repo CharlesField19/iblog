@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -11,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -35,6 +37,17 @@ type apiError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
+
+const (
+	maxLoginBodyBytes   = 4 << 10
+	maxArticleBodyBytes = 1 << 20
+	maxTitleLen         = 200
+	maxSlugLen          = 200
+	maxSummaryLen       = 1000
+	maxContentLen       = 200000
+	maxTagLen           = 24
+	maxArticleTags      = 10
+)
 type article struct {
 	ID          int64    `json:"id"`
 	Slug        string   `json:"slug"`
@@ -68,7 +81,18 @@ func fail(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]any{"error": apiError{code, message}})
 }
 func decode(r *http.Request, target any) error {
-	d := json.NewDecoder(io.LimitReader(r.Body, 2<<20))
+	return decodeLimit(r, target, 2<<20)
+}
+
+func decodeLimit(r *http.Request, target any, limit int64) error {
+	body, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
+	if err != nil {
+		return err
+	}
+	if int64(len(body)) > limit {
+		return errors.New("request body too large")
+	}
+	d := json.NewDecoder(bytes.NewReader(body))
 	if err := d.Decode(target); err != nil {
 		return err
 	}
@@ -77,6 +101,19 @@ func decode(r *http.Request, target any) error {
 		return errors.New("unexpected content after JSON body")
 	}
 	return nil
+}
+
+func validArticleFields(title, slug, summary, content string, tags []string) bool {
+	if title == "" || len([]rune(title)) > maxTitleLen || len([]rune(slug)) > maxSlugLen ||
+		len([]rune(summary)) > maxSummaryLen || len([]rune(content)) > maxContentLen || len(tags) > maxArticleTags {
+		return false
+	}
+	for _, tag := range tags {
+		if len([]rune(strings.TrimSpace(tag))) > maxTagLen {
+			return false
+		}
+	}
+	return true
 }
 func now() string { return time.Now().UTC().Format(time.RFC3339) }
 func (s *server) health(w http.ResponseWriter, r *http.Request) {
@@ -153,8 +190,16 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal", "服务器内部错误")
 		return
 	}
+	tagsByArticle, tagsErr := s.tagsForMany(r.Context(), items)
+	if tagsErr != nil {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
+	}
 	for i := range items {
-		items[i].Tags = s.tagsFor(r.Context(), items[i].ID)
+		items[i].Tags = tagsByArticle[items[i].ID]
+		if items[i].Tags == nil {
+			items[i].Tags = []string{}
+		}
 	}
 	writeJSON(w, 200, map[string]any{"items": items, "total": total, "page": page, "pageSize": size})
 }
@@ -191,6 +236,39 @@ func (s *server) tagsFor(ctx context.Context, id int64) []string {
 	}
 	return out
 }
+
+// tagsForMany loads tags for a whole page in one query. The previous
+// per-article query made the admin list increasingly slow as article count
+// grew, even though each individual query was fast.
+func (s *server) tagsForMany(ctx context.Context, items []article) (map[int64][]string, error) {
+	result := make(map[int64][]string, len(items))
+	if len(items) == 0 {
+		return result, nil
+	}
+	placeholders := make([]string, len(items))
+	args := make([]any, len(items))
+	for i, item := range items {
+		placeholders[i] = "?"
+		args[i] = item.ID
+	}
+	rows, err := s.db.QueryContext(ctx, "SELECT x.article_id,t.name FROM article_tags x JOIN tags t ON t.id=x.tag_id WHERE x.article_id IN ("+strings.Join(placeholders, ",")+") ORDER BY t.name", args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var articleID int64
+		var name string
+		if err := rows.Scan(&articleID, &name); err != nil {
+			return nil, err
+		}
+		result[articleID] = append(result[articleID], name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
 func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 	a, err := s.articleBy(r, slug, true)
@@ -202,7 +280,9 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "not_found", "文章不存在")
 		return
 	}
-	_, _ = s.db.ExecContext(r.Context(), "UPDATE articles SET views=views+1 WHERE id=?", a.ID)
+	if _, err := s.db.ExecContext(r.Context(), "UPDATE articles SET views=views+1 WHERE id=?", a.ID); err == nil {
+		a.Views++
+	}
 	writeJSON(w, 200, a)
 }
 func (s *server) articleBy(r *http.Request, key string, bySlug bool) (article, error) {
@@ -249,12 +329,18 @@ func (s *server) tags(w http.ResponseWriter, r *http.Request) {
 	items := []item{}
 	for rows.Next() {
 		var v item
-		if rows.Scan(&v.ID, &v.Name, &v.Count) == nil {
-			if !admin {
-				v.ID = 0
-			}
-			items = append(items, v)
+		if err := rows.Scan(&v.ID, &v.Name, &v.Count); err != nil {
+			fail(w, 500, "internal", "服务器内部错误")
+			return
 		}
+		if !admin {
+			v.ID = 0
+		}
+		items = append(items, v)
+	}
+	if err := rows.Err(); err != nil {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
 	}
 	if admin {
 		writeJSON(w, 200, map[string]any{"items": items})
@@ -272,9 +358,15 @@ func (s *server) friends(w http.ResponseWriter, r *http.Request) {
 	items := []friend{}
 	for rows.Next() {
 		var f friend
-		if rows.Scan(&f.ID, &f.Name, &f.URL, &f.Avatar, &f.Description, &f.SortOrder, &f.CreatedAt, &f.UpdatedAt) == nil {
-			items = append(items, f)
+		if err := rows.Scan(&f.ID, &f.Name, &f.URL, &f.Avatar, &f.Description, &f.SortOrder, &f.CreatedAt, &f.UpdatedAt); err != nil {
+			fail(w, 500, "internal", "服务器内部错误")
+			return
 		}
+		items = append(items, f)
+	}
+	if err := rows.Err(); err != nil {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
 	}
 	writeJSON(w, 200, map[string]any{"items": items})
 }
@@ -288,9 +380,15 @@ func (s *server) settings(w http.ResponseWriter, r *http.Request) {
 	m := map[string]json.RawMessage{}
 	for rows.Next() {
 		var k, v string
-		if rows.Scan(&k, &v) == nil {
-			m[k] = json.RawMessage(v)
+		if err := rows.Scan(&k, &v); err != nil || !json.Valid([]byte(v)) {
+			fail(w, 500, "internal", "服务器内部错误")
+			return
 		}
+		m[k] = json.RawMessage(v)
+	}
+	if err := rows.Err(); err != nil {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/v1/admin/") {
 		writeJSON(w, 200, map[string]any{"settings": map[string]any{"about": m["about"], "contacts": m["contacts"], "site": m["site"]}})
@@ -308,8 +406,14 @@ func (s *server) createArticle(w http.ResponseWriter, r *http.Request) {
 		Status  string   `json:"status"`
 		Tags    []string `json:"tags"`
 	}
-	if decode(r, &in) != nil || strings.TrimSpace(in.Title) == "" {
-		fail(w, 400, "bad_request", "标题不能为空")
+	if decodeLimit(r, &in, maxArticleBodyBytes) != nil {
+		fail(w, 400, "bad_request", "请求数据无效")
+		return
+	}
+	in.Title = strings.TrimSpace(in.Title)
+	in.Slug = strings.TrimSpace(in.Slug)
+	if !validArticleFields(in.Title, in.Slug, in.Summary, in.Content, in.Tags) {
+		fail(w, 400, "bad_request", "文章字段超出允许范围")
 		return
 	}
 	if in.Status == "" {
@@ -319,8 +423,6 @@ func (s *server) createArticle(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "bad_request", "status 必须为 draft 或 published")
 		return
 	}
-	in.Title = strings.TrimSpace(in.Title)
-	in.Slug = strings.TrimSpace(in.Slug)
 	if in.Slug == "" {
 		var err error
 		in.Slug, err = makeSlug()
@@ -412,7 +514,7 @@ func (s *server) updateArticle(w http.ResponseWriter, r *http.Request) {
 		Status  string   `json:"status"`
 		Tags    []string `json:"tags"`
 	}
-	if decode(r, &in) != nil {
+	if decodeLimit(r, &in, maxArticleBodyBytes) != nil {
 		fail(w, 400, "bad_request", "请求数据无效")
 		return
 	}
@@ -422,6 +524,10 @@ func (s *server) updateArticle(w http.ResponseWriter, r *http.Request) {
 	}
 	in.Title = strings.TrimSpace(in.Title)
 	in.Slug = strings.TrimSpace(in.Slug)
+	if !validArticleFields(in.Title, in.Slug, in.Summary, in.Content, in.Tags) {
+		fail(w, 400, "bad_request", "文章字段超出允许范围")
+		return
+	}
 	if in.Slug == "" {
 		fail(w, 400, "bad_request", "更新时必须填写 slug")
 		return
@@ -445,9 +551,21 @@ func (s *server) updateArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(r.Context(), "UPDATE articles SET slug=?,title=?,summary=?,content_md=?,status=?,updated_at=?,published_at=? WHERE id=?", in.Slug, in.Title, in.Summary, in.Content, in.Status, t, pv, old.ID)
+	res, err := tx.ExecContext(r.Context(), "UPDATE articles SET slug=?,title=?,summary=?,content_md=?,status=?,updated_at=?,published_at=? WHERE id=?", in.Slug, in.Title, in.Summary, in.Content, in.Status, t, pv, old.ID)
 	if err != nil {
-		fail(w, 409, "conflict", "slug 已存在")
+		if strings.Contains(strings.ToUpper(err.Error()), "UNIQUE") {
+			fail(w, 409, "conflict", "slug 已存在")
+		} else {
+			fail(w, 500, "internal", "服务器内部错误")
+		}
+		return
+	}
+	if changed, rowsErr := res.RowsAffected(); rowsErr != nil || changed == 0 {
+		if rowsErr != nil {
+			fail(w, 500, "internal", "服务器内部错误")
+		} else {
+			fail(w, 404, "not_found", "文章不存在")
+		}
 		return
 	}
 	if err = setArticleTags(r, tx, old.ID, in.Tags); err != nil {
@@ -480,7 +598,7 @@ func (s *server) saveTag(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Name string `json:"name"`
 	}
-	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" {
+	if decodeLimit(r, &in, maxLoginBodyBytes) != nil || strings.TrimSpace(in.Name) == "" || len([]rune(strings.TrimSpace(in.Name))) > maxTagLen {
 		fail(w, 400, "bad_request", "标签名不能为空")
 		return
 	}
@@ -527,7 +645,14 @@ func (s *server) deleteTag(w http.ResponseWriter, r *http.Request) {
 }
 func (s *server) saveFriend(w http.ResponseWriter, r *http.Request) {
 	var f friend
-	if decode(r, &f) != nil || strings.TrimSpace(f.Name) == "" || strings.TrimSpace(f.URL) == "" {
+	if decodeLimit(r, &f, 64<<10) != nil {
+		fail(w, 400, "bad_request", "请求数据无效")
+		return
+	}
+	f.Name = strings.TrimSpace(f.Name)
+	f.URL = strings.TrimSpace(f.URL)
+	f.Avatar = strings.TrimSpace(f.Avatar)
+	if f.Name == "" || f.URL == "" || len([]rune(f.Name)) > 100 || len([]rune(f.URL)) > 2048 || len([]rune(f.Avatar)) > 2048 || len([]rune(f.Description)) > 1000 {
 		fail(w, 400, "bad_request", "名称和链接不能为空")
 		return
 	}
@@ -589,7 +714,7 @@ func (s *server) saveSetting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var raw json.RawMessage
-	if decode(r, &raw) != nil || len(raw) == 0 || !json.Valid(raw) {
+	if decodeLimit(r, &raw, 256<<10) != nil || len(raw) == 0 || !json.Valid(raw) {
 		fail(w, 400, "bad_request", "setting body must be valid JSON")
 		return
 	}
@@ -654,7 +779,7 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if decode(r, &in) != nil {
+	if decodeLimit(r, &in, maxLoginBodyBytes) != nil {
 		fail(w, 400, "bad_request", "请求数据无效")
 		return
 	}
@@ -775,10 +900,12 @@ func (s *server) authorize(next http.Handler) http.Handler {
 		var c struct {
 			Username string `json:"username"`
 			Exp      int64  `json:"exp"`
+			IssuedAt int64  `json:"iat"`
 			Issuer   string `json:"iss"`
 			Subject  string `json:"sub"`
 		}
-		if e != nil || json.Unmarshal(b, &c) != nil || c.Username == "" || c.Issuer != "blog" || c.Subject != c.Username || c.Exp <= time.Now().Unix() {
+		nowUnix := time.Now().Unix()
+		if e != nil || json.Unmarshal(b, &c) != nil || c.Username == "" || c.Issuer != "blog" || c.Subject != c.Username || c.IssuedAt <= 0 || c.IssuedAt > nowUnix+60 || c.Exp <= nowUnix || c.Exp <= c.IssuedAt {
 			fail(w, 401, "unauthorized", "invalid or expired token")
 			return
 		}
@@ -796,7 +923,7 @@ func (s *server) changeAccount(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Username string `json:"username"`
 		}
-		if decode(r, &in) != nil || !regexp.MustCompile(`^[a-zA-Z0-9_-]{3,32}$`).MatchString(in.Username) {
+		if decodeLimit(r, &in, maxLoginBodyBytes) != nil || !regexp.MustCompile(`^[a-zA-Z0-9_-]{3,32}$`).MatchString(in.Username) {
 			fail(w, 400, "bad_request", "用户名需为3-32位字母数字-_")
 			return
 		}
@@ -810,7 +937,7 @@ func (s *server) changeAccount(w http.ResponseWriter, r *http.Request) {
 			Current string `json:"currentPassword"`
 			New     string `json:"newPassword"`
 		}
-		if decode(r, &in) != nil || len(in.New) < 8 {
+		if decodeLimit(r, &in, maxLoginBodyBytes) != nil || len([]rune(in.New)) < 8 || len([]rune(in.New)) > 128 {
 			fail(w, 400, "bad_request", "新密码至少需要 8 位")
 			return
 		}
@@ -985,7 +1112,36 @@ func (s *server) routes() http.Handler {
 		}
 		serveSPA(w, r, s.webDist, "/index.html")
 	})
-	return recoverer(s.securityHeaders(mux))
+	return recoverer(requestLogger(s.securityHeaders(mux)))
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(status int) {
+	if w.status != 0 {
+		return
+	}
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *statusWriter) Write(body []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(body)
+}
+
+func requestLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		started := time.Now()
+		wrapped := &statusWriter{ResponseWriter: w}
+		next.ServeHTTP(wrapped, r)
+		log.Printf("http method=%s path=%s status=%d duration=%s", r.Method, r.URL.Path, wrapped.status, time.Since(started).Round(time.Millisecond))
+	})
 }
 func (s *server) securityHeaders(next http.Handler) http.Handler {
 	allowed := make(map[string]bool)
@@ -1035,7 +1191,7 @@ func (s *server) setupAdmin(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if decode(r, &in) != nil {
+	if decodeLimit(r, &in, maxLoginBodyBytes) != nil {
 		fail(w, 400, "bad_request", "请求数据无效")
 		return
 	}

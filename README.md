@@ -21,7 +21,7 @@ docker compose ps
 docker compose logs --tail=100 blog
 ```
 
-默认配置使用镜像 `ghcr.io/charlesfield19/iblog:v1.0.0`，并将主机端口 `11190` 映射到容器端口 `11190`。如需只允许本机或反向代理访问，直接在 `compose.yaml` 中修改端口：
+默认配置使用镜像 `ghcr.io/charlesfield19/iblog:v1.0.1`，并将主机端口 `11190` 映射到容器端口 `11190`。如需只允许本机或反向代理访问，直接在 `compose.yaml` 中修改端口：
 
 ```yaml
 ports:

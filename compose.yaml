@@ -1,6 +1,6 @@
 services:
   blog:
-    image: ghcr.io/charlesfield19/iblog:v1.0.0
+    image: ghcr.io/charlesfield19/iblog:v1.0.1
     container_name: iblog
     restart: unless-stopped
     ports:
