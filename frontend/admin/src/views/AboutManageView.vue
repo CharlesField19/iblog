@@ -1,8 +1,11 @@
 <script setup>
+import { errorMessage } from '../../../shared/i18n.js'
 import { inject, onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { adminRequest } from '../api.js'
 
 const toast = inject('toast')
+const { t } = useI18n()
 const state = reactive({ intro: '', bio: '', skills: [], timeline: [], contactNote: '' })
 const skill = ref('')
 const loading = ref(true)
@@ -24,7 +27,7 @@ async function load() {
     state.skills = [...(state.skills || [])]
     state.timeline = (state.timeline || []).map((x) => ({ ...x }))
   } catch (e) {
-    error.value = e.message
+    error.value = errorMessage(e)
   } finally {
     loading.value = false
   }
@@ -34,7 +37,7 @@ function addSkill() {
   const v = skill.value.trim()
   if (!v) return
   if ([...v].length > 24) {
-    toast('error', '技能名称不能超过 24 个字符')
+    toast('error', t('admin.about.skillTooLong'))
     return
   }
   if (!state.skills.includes(v)) state.skills.push(v)
@@ -55,9 +58,9 @@ async function save() {
         })),
       },
     })
-    toast('success', '关于信息已保存')
+    toast('success', t('admin.about.saved'))
   } catch (e) {
-    toast('error', e.message)
+    toast('error', errorMessage(e))
   } finally {
     saving.value = false
   }
@@ -67,50 +70,50 @@ async function save() {
 <template>
   <main id="admin-content" class="admin-main" tabindex="-1">
     <div class="list-head">
-      <h1>关于管理</h1>
+      <h1>{{ t('admin.about.title') }}</h1>
       <button class="btn" :disabled="saving || loading" @click="save">
-        {{ saving ? '保存中…' : '保存' }}
+        {{ saving ? t('admin.common.saving') : t('admin.common.save') }}
       </button>
     </div>
     <p v-if="error" class="card error-card" role="alert">
-      {{ error }} <button class="link-btn" @click="load">重试</button>
+      {{ error }} <button class="link-btn" @click="load">{{ t('admin.common.retry') }}</button>
     </p>
-    <div v-else-if="loading" class="card skeleton">加载中…</div>
+    <div v-else-if="loading" class="card skeleton">{{ t('admin.common.loading') }}</div>
     <div v-else class="stack">
       <section class="card section-card">
-        <h2 class="section-title">简介</h2>
+        <h2 class="section-title">{{ t('admin.about.intro') }}</h2>
         <div class="field">
-          <label for="about-intro">一句话介绍</label
+          <label for="about-intro">{{ t('admin.about.oneLine') }}</label
           ><input
             id="about-intro"
             v-model="state.intro"
             name="intro"
             maxlength="300"
-            placeholder="介绍一下这个博客…"
+            :placeholder="t('admin.about.introPlaceholder')"
           />
         </div>
         <div class="field">
-          <label for="about-bio">我是谁</label
+          <label for="about-bio">{{ t('admin.about.bio') }}</label
           ><textarea
             id="about-bio"
             v-model="state.bio"
             name="bio"
             rows="4"
             maxlength="5000"
-            placeholder="写一段个人介绍…"
+            :placeholder="t('admin.about.bioPlaceholder')"
           ></textarea>
         </div>
       </section>
       <section class="card section-card">
-        <h2 class="section-title">常用技能</h2>
-        <p class="section-hint">每项最多 24 个字符；输入后回车或点击添加。</p>
+        <h2 class="section-title">{{ t('admin.about.skills') }}</h2>
+        <p class="section-hint">{{ t('admin.about.skillsHint') }}</p>
         <div class="chips">
           <span v-for="(item, index) in state.skills" :key="`${item}-${index}`" class="chip"
             >{{ item }}
             <button
               class="chip-remove"
               type="button"
-              :aria-label="`移除技能 ${item}`"
+              :aria-label="t('admin.about.removeSkill', { skill: item })"
               @click="state.skills.splice(index, 1)"
             >
               ×
@@ -123,22 +126,24 @@ async function save() {
             class="chip-input"
             maxlength="24"
             name="skill"
-            aria-label="添加技能"
-            placeholder="例如：Vue…"
+            :aria-label="t('admin.about.addSkill')"
+            :placeholder="t('admin.about.skillExample')"
             autocomplete="off"
             @keydown.enter.prevent="addSkill"
-          /><button class="btn btn-secondary btn-sm" type="button" @click="addSkill">添加</button>
+          /><button class="btn btn-secondary btn-sm" type="button" @click="addSkill">
+            {{ t('admin.common.add') }}
+          </button>
         </div>
       </section>
       <section class="card section-card">
-        <h2 class="section-title">时间线</h2>
+        <h2 class="section-title">{{ t('admin.about.timeline') }}</h2>
         <div
           v-for="(item, index) in state.timeline"
           :key="`${item.year}-${item.title}-${index}`"
           class="timeline-row"
         >
           <div class="field">
-            <label :for="`timeline-year-${index}`">年份</label
+            <label :for="`timeline-year-${index}`">{{ t('admin.about.year') }}</label
             ><input
               :id="`timeline-year-${index}`"
               v-model="item.year"
@@ -148,33 +153,33 @@ async function save() {
             />
           </div>
           <div class="field">
-            <label :for="`timeline-title-${index}`">标题</label
+            <label :for="`timeline-title-${index}`">{{ t('admin.about.titleField') }}</label
             ><input
               :id="`timeline-title-${index}`"
               v-model="item.title"
               :name="`timeline-title-${index}`"
               maxlength="200"
-              placeholder="经历标题…"
+              :placeholder="t('admin.about.titlePlaceholder')"
             />
           </div>
           <div class="field">
-            <label :for="`timeline-description-${index}`">描述</label
+            <label :for="`timeline-description-${index}`">{{ t('admin.about.description') }}</label
             ><textarea
               :id="`timeline-description-${index}`"
               v-model="item.description"
               :name="`timeline-description-${index}`"
               rows="2"
               maxlength="2000"
-              placeholder="描述这段经历…"
+              :placeholder="t('admin.about.descriptionPlaceholder')"
             ></textarea>
           </div>
           <button
             class="link-btn danger"
             type="button"
-            :aria-label="`删除时间线项目 ${item.title || index + 1}`"
+            :aria-label="t('admin.about.removeTimeline', { title: item.title || index + 1 })"
             @click="state.timeline.splice(index, 1)"
           >
-            删除
+            {{ t('admin.about.delete') }}
           </button>
         </div>
         <button
@@ -182,19 +187,19 @@ async function save() {
           type="button"
           @click="state.timeline.push({ year: '', title: '', description: '' })"
         >
-          + 添加一段经历
+          {{ t('admin.about.addTimeline') }}
         </button>
       </section>
       <section class="card section-card">
-        <h2 class="section-title">联系卡片说明</h2>
+        <h2 class="section-title">{{ t('admin.about.contactSection') }}</h2>
         <div class="field">
-          <label for="contact-note">关于页联系卡片上的一句话</label
+          <label for="contact-note">{{ t('admin.about.contactNote') }}</label
           ><input
             id="contact-note"
             v-model="state.contactNote"
             name="contactNote"
             maxlength="300"
-            placeholder="欢迎交流与反馈…"
+            :placeholder="t('admin.about.contactPlaceholder')"
           />
         </div>
       </section>

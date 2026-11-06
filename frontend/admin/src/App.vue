@@ -1,10 +1,13 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { clearSession } from './session.js'
+import { i18n, toggleLocale } from '../../shared/i18n.js'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const theme = ref(localStorage.getItem('iblog-theme-mode') || 'auto')
 const colorScheme = window.matchMedia('(prefers-color-scheme: dark)')
 const systemPrefersDark = ref(colorScheme.matches)
@@ -37,7 +40,7 @@ function toast(kind, text) {
   }, 3200)
 }
 const confirmDialog = ref(null)
-function confirmAction(message, title = '请确认') {
+function confirmAction(message, title = t('confirmDefault')) {
   return new Promise((resolve) => {
     confirmDialog.value?.resolve(false)
     confirmDialog.value = { message, title, resolve }
@@ -51,14 +54,21 @@ function finishConfirm(value) {
 }
 provide('toast', toast)
 provide('confirmAction', confirmAction)
-const nav = [
-  ['/', '文章管理'],
-  ['/links', '友链管理'],
-  ['/tags', '标签管理'],
-  ['/about', '关于管理'],
-  ['/settings', '站点设置'],
-  ['/account', '账号管理'],
-]
+const nav = computed(() => [
+  ['/', t('admin.nav.articles')],
+  ['/links', t('admin.nav.links')],
+  ['/tags', t('admin.nav.tags')],
+  ['/about', t('admin.nav.about')],
+  ['/settings', t('admin.nav.settings')],
+  ['/account', t('admin.nav.account')],
+])
+watch(
+  [() => route.path, () => i18n.global.locale.value],
+  () => {
+    document.title = `${t('adminTitle')} · iBlog`
+  },
+  { immediate: true },
+)
 async function logout() {
   try {
     await fetch('/api/v1/auth/logout', {
@@ -77,7 +87,7 @@ async function logout() {
   <template v-if="route.path !== '/login'">
     <header class="nav">
       <div class="nav-inner">
-        <nav class="nav-tabs" aria-label="管理导航">
+        <nav class="nav-tabs" :aria-label="t('adminNavigation')">
           <RouterLink
             v-for="[to, label] in nav"
             :key="to"
@@ -91,7 +101,7 @@ async function logout() {
           <button
             class="theme-toggle"
             type="button"
-            :aria-label="effectiveDark ? '切换到明亮模式' : '切换到暗色模式'"
+            :aria-label="effectiveDark ? t('themeLight') : t('themeDark')"
             @click="toggleTheme"
           >
             <svg v-if="effectiveDark" viewBox="0 0 24 24" aria-hidden="true">
@@ -102,12 +112,20 @@ async function logout() {
             ><svg v-else viewBox="0 0 24 24" aria-hidden="true">
               <path d="M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z" />
             </svg></button
-          ><button class="link-btn" type="button" @click="logout">退出登录</button>
+          ><button class="link-btn" type="button" @click="logout">{{ t('admin.logout') }}</button>
+          <button
+            class="language-toggle"
+            type="button"
+            :aria-label="$t('languageSwitch')"
+            @click="toggleLocale"
+          >
+            {{ $t('language') }}
+          </button>
         </div>
       </div>
     </header>
   </template>
-  <a class="skip-link" href="#admin-content">跳到主要内容</a>
+  <a class="skip-link" href="#admin-content">{{ $t('skipToContent') }}</a>
   <div class="app-page"><RouterView /></div>
   <div class="toast-host" aria-live="polite" aria-atomic="false">
     <div v-for="item in notices" :key="item.id" class="toast" :class="item.kind" role="status">
@@ -118,7 +136,7 @@ async function logout() {
       ><button
         class="toast-close"
         type="button"
-        aria-label="关闭提示"
+        :aria-label="t('admin.closeNotice')"
         @click="notices = notices.filter((x) => x.id !== item.id)"
       >
         ×
@@ -135,8 +153,9 @@ async function logout() {
       <h2>{{ confirmDialog.title }}</h2>
       <p>{{ confirmDialog.message }}</p>
       <div class="confirm-actions">
-        <button class="btn btn-secondary" type="button" @click="finishConfirm(false)">取消</button
-        ><button class="btn" type="button" @click="finishConfirm(true)">确定</button>
+        <button class="btn btn-secondary" type="button" @click="finishConfirm(false)">
+          {{ t('admin.cancel') }}</button
+        ><button class="btn" type="button" @click="finishConfirm(true)">{{ t('admin.ok') }}</button>
       </div>
     </section>
   </div>

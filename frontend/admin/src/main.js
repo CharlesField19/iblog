@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
+import { i18n } from '../../shared/i18n.js'
 import LoginView from './views/LoginView.vue'
 import DashboardView from './views/DashboardView.vue'
 import EditorView from './views/EditorView.vue'
@@ -32,4 +33,4 @@ router.beforeEach((to) => {
   if (to.path !== '/login' && !hasSession()) return { path: '/login', query: { next: to.fullPath } }
   if (to.path === '/login' && hasSession()) return '/'
 })
-createApp(App).use(router).mount('#app')
+createApp(App).use(router).use(i18n).mount('#app')

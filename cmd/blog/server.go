@@ -36,8 +36,7 @@ type loginFailure struct {
 	expires time.Time
 }
 type apiError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code string `json:"code"`
 }
 
 type requestContextKey string
@@ -96,7 +95,7 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 func fail(w http.ResponseWriter, status int, code, message string) {
-	writeJSON(w, status, map[string]any{"error": apiError{code, message}})
+	writeJSON(w, status, map[string]any{"error": apiError{Code: code}})
 }
 func decode(r *http.Request, target any) error {
 	return decodeLimit(r, target, 2<<20)
@@ -1206,11 +1205,7 @@ func (s *server) adminHandler(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(p, prefix) {
 			id, err := strconv.ParseInt(strings.TrimPrefix(p, prefix), 10, 64)
 			if err != nil || id < 1 {
-				message := "id 必须为正整数"
-				if kind == "articles" {
-					message = "id must be a positive integer"
-				}
-				fail(w, 400, "bad_request", message)
+				fail(w, 400, "bad_request", "id must be a positive integer")
 				return
 			}
 		}

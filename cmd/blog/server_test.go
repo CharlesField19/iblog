@@ -60,6 +60,22 @@ func call(t *testing.T, h http.Handler, method, path string, body any, token str
 	_ = json.Unmarshal(w.Body.Bytes(), &v)
 	return w.Code, v
 }
+
+func TestErrorResponsesExposeOnlyStableCode(t *testing.T) {
+	s := testServer(t)
+	h := s.routes()
+	status, body := call(t, h, "GET", "/api/v1/articles?page=0", nil, "")
+	if status != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	errBody, ok := body["error"].(map[string]any)
+	if !ok || errBody["code"] != "bad_request" {
+		t.Fatalf("error contract=%v", body["error"])
+	}
+	if _, ok := errBody["message"]; ok {
+		t.Fatalf("error response must not expose message: %v", errBody)
+	}
+}
 func TestPublicAndAdminFlow(t *testing.T) {
 	s := testServer(t)
 	h := s.routes()

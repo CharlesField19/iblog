@@ -1,10 +1,42 @@
 <script setup>
 import { onMounted, ref } from 'vue'
-import { request } from '../../../shared/api.js'
+import { useI18n } from 'vue-i18n'
+import { getPublicData } from '../../../shared/publicData.js'
 
-const about = ref({ intro: '', bio: '', skills: [], timeline: [], contactNote: '' })
+const about = ref({
+  intro: '',
+  bio: '',
+  skills: [],
+  timeline: [],
+  contactNote: '',
+})
+const { t } = useI18n()
 const contacts = ref({})
 const contactStatus = ref('')
+const loading = ref(false)
+const defaultAbout = () => ({
+  intro: t('web.aboutDefaultIntro'),
+  bio: t('web.aboutDefaultBio'),
+  skills: [
+    t('web.defaultSkillCoding'),
+    t('web.defaultSkillPhotography'),
+    t('web.defaultSkillWriting'),
+  ],
+  timeline: [
+    {
+      year: '2024',
+      title: t('web.defaultTimelineRecentTitle'),
+      description: t('web.defaultTimelineRecentDescription'),
+    },
+    {
+      year: '2020',
+      title: t('web.defaultTimelineStartTitle'),
+      description: t('web.defaultTimelineStartDescription'),
+    },
+  ],
+  contactNote: t('web.aboutDefaultContact'),
+})
+const defaultContacts = { email: '', github: '', x: '', telegram: '' }
 const social = [
   {
     key: 'github',
@@ -45,21 +77,25 @@ async function copyEmail() {
   if (!email) return
   try {
     await navigator.clipboard.writeText(email)
-    contactStatus.value = '邮箱已复制'
+    contactStatus.value = t('web.copied')
   } catch {
-    contactStatus.value = '复制失败，请手动选择邮箱'
+    contactStatus.value = t('web.copyFailed')
   }
   window.setTimeout(() => {
     contactStatus.value = ''
   }, 2200)
 }
 onMounted(async () => {
+  about.value = defaultAbout()
+  contacts.value = defaultContacts
   try {
-    const settings = await request('/api/v1/settings')
+    const settings = await getPublicData('/api/v1/settings')
     about.value = { ...about.value, ...(settings.about || {}) }
-    contacts.value = settings.contacts || {}
+    contacts.value = { ...defaultContacts, ...(settings.contacts || {}) }
   } catch {
     /* leave the page usable if settings are unavailable */
+  } finally {
+    loading.value = false
   }
 })
 </script>
@@ -67,22 +103,22 @@ onMounted(async () => {
 <template>
   <section class="page-head">
     <div class="container">
-      <h1>关于</h1>
-      <p class="sub">{{ about.intro || '关于这个博客' }}</p>
+      <h1>{{ t('web.about') }}</h1>
+      <p class="sub">{{ about.intro || t('web.aboutDefaultIntro') }}</p>
     </div>
   </section>
   <section class="section">
     <div class="container about-grid">
       <div class="card">
-        <h2 class="section-title">我是谁</h2>
-        <p class="about-bio">{{ about.bio || '在后台的“关于管理”中添加介绍。' }}</p>
-        <h3 v-if="about.skills?.length" class="about-subtitle">常用技能</h3>
+        <h2 class="section-title">{{ t('web.whoAmI') }}</h2>
+        <p class="about-bio">{{ about.bio || t('web.aboutDefaultBio') }}</p>
+        <h3 v-if="about.skills?.length" class="about-subtitle">{{ t('web.skills') }}</h3>
         <div class="skill-list">
           <span v-for="skill in about.skills" :key="skill" class="chip">{{ skill }}</span>
         </div>
       </div>
       <div class="card">
-        <h2 class="section-title">时间线</h2>
+        <h2 class="section-title">{{ t('web.timeline') }}</h2>
         <div class="timeline">
           <article
             v-for="(item, index) in about.timeline"
@@ -93,7 +129,7 @@ onMounted(async () => {
             <h3>{{ item.title }}</h3>
             <p>{{ item.description }}</p>
           </article>
-          <p v-if="!about.timeline?.length" class="muted">尚未添加经历。</p>
+          <p v-if="!about.timeline?.length" class="muted">{{ t('web.noTimeline') }}</p>
         </div>
       </div>
     </div>
@@ -101,8 +137,8 @@ onMounted(async () => {
   <section class="section">
     <div class="container">
       <div class="card contact-card">
-        <h2 class="section-title">联系我</h2>
-        <p>{{ about.contactNote || '欢迎交流与反馈，通常 24 小时内回复。' }}</p>
+        <h2 class="section-title">{{ t('web.contact') }}</h2>
+        <p>{{ about.contactNote || t('web.aboutDefaultContact') }}</p>
         <button
           v-if="contacts.email?.trim()"
           class="btn email-button"

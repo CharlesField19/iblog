@@ -1,6 +1,6 @@
 export class ApiError extends Error {
-  constructor(status, code, message) {
-    super(message)
+  constructor(status, code) {
+    super(code)
     this.status = status
     this.code = code
   }
@@ -30,11 +30,6 @@ export async function request(path, { method = 'GET', body, token, signal } = {}
     throw new ApiError(
       0,
       cancelled ? 'aborted' : error?.name === 'AbortError' ? 'timeout' : 'network',
-      cancelled
-        ? '请求已取消'
-        : error?.name === 'AbortError'
-          ? '请求超时，请稍后重试'
-          : '网络请求失败，请检查网络连接',
     )
   } finally {
     clearTimeout(timeout)
@@ -43,11 +38,7 @@ export async function request(path, { method = 'GET', body, token, signal } = {}
   if (response.status === 204) return null
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
-    throw new ApiError(
-      response.status,
-      payload?.error?.code || String(response.status),
-      payload?.error?.message || '请求失败',
-    )
+    throw new ApiError(response.status, payload?.error?.code || String(response.status))
   }
   return payload
 }

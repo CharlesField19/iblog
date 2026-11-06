@@ -1,8 +1,11 @@
 <script setup>
+import { errorMessage } from '../../../shared/i18n.js'
 import { inject, onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { adminRequest } from '../api.js'
 
 const toast = inject('toast')
+const { t } = useI18n()
 const contacts = reactive({ email: '', github: '', x: '', telegram: '' })
 const loading = ref(true)
 const saving = ref(false)
@@ -37,7 +40,7 @@ async function load() {
       ...(data.settings?.site || {}),
     })
   } catch (e) {
-    error.value = e.message
+    error.value = errorMessage(e)
   } finally {
     loading.value = false
   }
@@ -46,7 +49,7 @@ onMounted(load)
 async function save() {
   const email = contacts.email.trim()
   if (email && !email.includes('@')) {
-    toast('error', '邮箱格式不正确')
+    toast('error', t('admin.settings.invalidEmail'))
     return
   }
   for (const [label, value] of [
@@ -55,7 +58,7 @@ async function save() {
     ['Telegram', contacts.telegram],
   ])
     if (value && !/^https?:\/\//i.test(value)) {
-      toast('error', `${label} 链接需以 http(s):// 开头`)
+      toast('error', t('admin.settings.invalidUrl', { label }))
       return
     }
   saving.value = true
@@ -71,9 +74,9 @@ async function save() {
       }),
     ])
     document.title = site.name.trim() || 'iBlog'
-    toast('success', '设置已保存')
+    toast('success', t('admin.settings.saved'))
   } catch (e) {
-    toast('error', e.message)
+    toast('error', errorMessage(e))
   } finally {
     saving.value = false
   }
@@ -83,90 +86,90 @@ async function save() {
 <template>
   <main id="admin-content" class="admin-main" tabindex="-1">
     <div class="list-head">
-      <h1>站点设置</h1>
+      <h1>{{ t('admin.settings.title') }}</h1>
       <button class="btn" :disabled="saving || loading" @click="save">
-        {{ saving ? '保存中…' : '保存' }}
+        {{ saving ? t('admin.common.saving') : t('admin.common.save') }}
       </button>
     </div>
-    <p class="page-intro">联系方式显示在首页社交链接区和关于页。</p>
+    <p class="page-intro">{{ t('admin.settings.intro') }}</p>
     <p v-if="error" class="card error-card" role="alert">
-      {{ error }} <button class="link-btn" @click="load">重试</button>
+      {{ error }} <button class="link-btn" @click="load">{{ t('admin.common.retry') }}</button>
     </p>
-    <div v-else-if="loading" class="card skeleton">加载中…</div>
+    <div v-else-if="loading" class="card skeleton">{{ t('admin.common.loading') }}</div>
     <section v-else class="card section-card">
-      <h2 class="section-title">主页内容</h2>
-      <p class="page-intro">这些内容会显示在首页主视觉区、浏览器标题和页脚。</p>
+      <h2 class="section-title">{{ t('admin.settings.homepage') }}</h2>
+      <p class="page-intro">{{ t('admin.settings.homepageHint') }}</p>
       <div class="field">
-        <label for="site-name">站点名称</label
+        <label for="site-name">{{ t('admin.settings.siteName') }}</label
         ><input
           id="site-name"
           v-model="site.name"
           name="siteName"
           maxlength="80"
-          placeholder="例如：iBlog…"
+          :placeholder="t('admin.settings.exampleSite')"
           autocomplete="off"
         />
       </div>
       <div class="field">
-        <label for="site-title-prefix">主页标题（前半段）</label
+        <label for="site-title-prefix">{{ t('admin.settings.titlePrefix') }}</label
         ><input
           id="site-title-prefix"
           v-model="site.titlePrefix"
           name="titlePrefix"
           maxlength="80"
-          placeholder="例如：Chenghao’s…"
+          :placeholder="t('admin.settings.examplePrefix')"
           autocomplete="off"
         />
       </div>
       <div class="field">
-        <label for="site-title-accent">主页标题（强调部分）</label
+        <label for="site-title-accent">{{ t('admin.settings.titleAccent') }}</label
         ><input
           id="site-title-accent"
           v-model="site.titleAccent"
           name="titleAccent"
           maxlength="80"
-          placeholder="例如：Blog…"
+          :placeholder="t('admin.settings.exampleAccent')"
           autocomplete="off"
         />
       </div>
       <div class="field">
-        <label for="site-subtitle">主页标语</label
+        <label for="site-subtitle">{{ t('admin.settings.subtitle') }}</label
         ><input
           id="site-subtitle"
           v-model="site.subtitle"
           name="subtitle"
           maxlength="160"
-          placeholder="例如：Code · Life · Ideas…"
+          :placeholder="t('admin.settings.exampleSubtitle')"
           autocomplete="off"
         />
       </div>
       <div class="field">
-        <label for="site-footer-name">页脚署名</label
+        <label for="site-footer-name">{{ t('admin.settings.footerName') }}</label
         ><input
           id="site-footer-name"
           v-model="site.footerName"
           name="footerName"
           maxlength="80"
-          placeholder="署名…"
+          :placeholder="t('admin.settings.footerNamePlaceholder')"
           autocomplete="off"
         />
       </div>
       <div class="field">
-        <label for="site-footer-text">页脚文案</label
+        <label for="site-footer-text">{{ t('admin.settings.footerText') }}</label
         ><input
           id="site-footer-text"
           v-model="site.footerText"
           name="footerText"
           maxlength="160"
-          placeholder="页脚短句…"
+          :placeholder="t('admin.settings.footerTextPlaceholder')"
           autocomplete="off"
         />
       </div>
     </section>
     <section v-if="!loading && !error" class="card section-card">
-      <h2 class="section-title">联系方式</h2>
+      <h2 class="section-title">{{ t('admin.settings.contacts') }}</h2>
       <div class="field">
-        <label for="contact-email">邮箱</label
+        <label for="contact-email">{{ t('admin.settings.email') }}</label
         ><input
           id="contact-email"
           v-model="contacts.email"
@@ -177,7 +180,7 @@ async function save() {
         />
       </div>
       <div class="field">
-        <label for="contact-github">GitHub 主页链接</label
+        <label for="contact-github">GitHub URL</label
         ><input
           id="contact-github"
           v-model="contacts.github"
@@ -188,7 +191,7 @@ async function save() {
         />
       </div>
       <div class="field">
-        <label for="contact-x">X 主页链接</label
+        <label for="contact-x">X URL</label
         ><input
           id="contact-x"
           v-model="contacts.x"
@@ -199,7 +202,7 @@ async function save() {
         />
       </div>
       <div class="field">
-        <label for="contact-telegram">Telegram 主页链接</label
+        <label for="contact-telegram">Telegram URL</label
         ><input
           id="contact-telegram"
           v-model="contacts.telegram"

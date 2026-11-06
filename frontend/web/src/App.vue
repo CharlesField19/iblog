@@ -1,7 +1,9 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { request } from '../../shared/api.js'
+import { i18n, toggleLocale } from '../../shared/i18n.js'
+import { getPublicData } from '../../shared/publicData.js'
 
 const route = useRoute()
 const theme = ref(localStorage.getItem('iblog-theme-mode') || 'auto')
@@ -11,21 +13,32 @@ const effectiveDark = computed(() =>
   theme.value === 'auto' ? systemPrefersDark.value : theme.value === 'dark',
 )
 const site = ref({ footerName: 'Chenghao', footerText: '用代码与热爱搭建' })
-const links = [
-  { to: '/', label: '首页' },
-  { to: '/articles', label: '文章' },
-  { to: '/friends', label: '友链' },
-  { to: '/about', label: '关于' },
-]
-const pageMeta = {
-  '/': ['iBlog · Code · Life · Ideas', '用代码与热爱搭建。记录技术、生活与想法。'],
-  '/articles': ['文章 · iBlog', '浏览 iBlog 的文章，记录技术、生活与想法。'],
-  '/about': ['关于 · iBlog', '了解作者、经历与联系方式。'],
-  '/friends': ['友链 · iBlog', '常去逛的地方与友链。'],
+const { t } = useI18n()
+const links = computed(() => [
+  { to: '/', label: t('web.home') },
+  { to: '/articles', label: t('web.articles') },
+  { to: '/friends', label: t('web.friends') },
+  { to: '/about', label: t('web.about') },
+])
+function prefetchRoute(path) {
+  if (path === '/articles') {
+    void getPublicData('/api/v1/articles?page=1&pageSize=12').catch(() => {})
+    void getPublicData('/api/v1/tags').catch(() => {})
+  } else if (path === '/friends') {
+    void getPublicData('/api/v1/friends').catch(() => {})
+  } else if (path === '/about') {
+    void getPublicData('/api/v1/settings').catch(() => {})
+  }
 }
+const pageMeta = computed(() => ({
+  '/': ['iBlog · Code · Life · Ideas', t('web.articlesIntro')],
+  '/articles': [`${t('web.articles')} · iBlog`, t('web.articlesIntro')],
+  '/about': [`${t('web.about')} · iBlog`, t('web.aboutBlog')],
+  '/friends': [`${t('web.friends')} · iBlog`, t('web.friendsIntro')],
+}))
 function applyRouteMeta(path = route.path) {
   if (path.startsWith('/articles/')) return
-  const [title, description] = pageMeta[path] || pageMeta['/']
+  const [title, description] = pageMeta.value[path] || pageMeta.value['/']
   document.title = title
   let meta = document.head.querySelector('meta[name="description"]')
   if (!meta) {
@@ -75,11 +88,13 @@ function syncSystemTheme(event) {
   systemPrefersDark.value = event.matches
 }
 watch([theme, systemPrefersDark], applyTheme, { immediate: true })
-watch(() => route.path, applyRouteMeta, { immediate: true })
+watch([() => route.path, () => i18n.global.locale.value], () => applyRouteMeta(), {
+  immediate: true,
+})
 onMounted(async () => {
   colorScheme.addEventListener('change', syncSystemTheme)
   try {
-    const settings = await request('/api/v1/settings')
+    const settings = await getPublicData('/api/v1/settings')
     site.value = { ...site.value, ...(settings.site || {}) }
   } catch {
     /* Keep the built-in footer copy when settings cannot be loaded. */
@@ -92,11 +107,14 @@ onBeforeUnmount(() => colorScheme.removeEventListener('change', syncSystemTheme)
   <div>
     <header class="nav">
       <div class="nav-inner">
-        <nav class="nav-links" aria-label="主导航">
+        <nav class="nav-links" :aria-label="$t('web.nav')">
           <RouterLink
             v-for="link in links"
             :key="link.to"
             :to="link.to"
+            @pointerenter="prefetchRoute(link.to)"
+            @focus="prefetchRoute(link.to)"
+            @touchstart.passive="prefetchRoute(link.to)"
             :class="{ active: route.path === link.to }"
             :aria-current="route.path === link.to ? 'page' : undefined"
             >{{ link.label }}</RouterLink
@@ -106,7 +124,7 @@ onBeforeUnmount(() => colorScheme.removeEventListener('change', syncSystemTheme)
           <button
             class="theme-toggle"
             type="button"
-            :aria-label="effectiveDark ? '切换到明亮模式' : '切换到暗色模式'"
+            :aria-label="effectiveDark ? $t('themeLight') : $t('themeDark')"
             @click="toggleTheme"
           >
             <svg
@@ -143,14 +161,22 @@ onBeforeUnmount(() => colorScheme.removeEventListener('change', syncSystemTheme)
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
             </svg>
           </button>
+          <button
+            class="language-toggle"
+            type="button"
+            :aria-label="$t('languageSwitch')"
+            @click="toggleLocale"
+          >
+            {{ $t('language') }}
+          </button>
         </div>
       </div>
     </header>
-    <a class="skip-link" href="#main-content">跳到主要内容</a>
+    <a class="skip-link" href="#main-content">{{ $t('skipToContent') }}</a>
     <main id="main-content" tabindex="-1"><RouterView /></main>
     <footer class="footer">
       <div class="footer-inner">
-        <nav class="footer-links" aria-label="页脚导航">
+        <nav class="footer-links" :aria-label="$t('web.footerNav')">
           <RouterLink v-for="link in links" :key="link.to" :to="link.to">{{
             link.label
           }}</RouterLink>

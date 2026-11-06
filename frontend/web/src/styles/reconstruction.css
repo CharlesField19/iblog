@@ -76,6 +76,12 @@
   color: var(--text-2);
   font-size: 13px;
 }
+@media (max-width: 720px) {
+  .nav-links {
+    box-shadow: none;
+    background: transparent;
+  }
+}
 .email-button {
   margin-top: 24px;
   display: inline-flex;
@@ -121,6 +127,73 @@ button.chip.selected {
   gap: 10px;
   color: var(--text);
   padding: 24px 26px;
+}
+.post-card-skeleton,
+.friend-card-skeleton {
+  pointer-events: none;
+}
+.skeleton-row,
+.skeleton-lines {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.skeleton-lines {
+  flex-direction: column;
+  align-items: flex-start;
+  flex: 1;
+  gap: 8px;
+}
+.skeleton-bar {
+  display: block;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--hover-bg);
+  animation: iblog-skeleton-pulse 1.4s ease-in-out infinite;
+}
+.skeleton-tag {
+  width: 72px;
+  height: 24px;
+}
+.skeleton-date {
+  width: 82px;
+  height: 14px;
+}
+.skeleton-title {
+  width: 72%;
+  height: 22px;
+}
+.skeleton-summary {
+  width: 92%;
+}
+.skeleton-summary.short {
+  width: 58%;
+}
+.skeleton-circle {
+  background: var(--hover-bg);
+  animation: iblog-skeleton-pulse 1.4s ease-in-out infinite;
+}
+.skeleton-name {
+  width: 104px;
+  height: 18px;
+}
+.skeleton-description {
+  width: 150px;
+}
+@keyframes iblog-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-bar,
+  .skeleton-circle {
+    animation: none;
+  }
 }
 .article-list-container {
   max-width: 900px;

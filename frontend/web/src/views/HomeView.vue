@@ -1,9 +1,13 @@
 <script setup>
+import { errorMessage } from '../../../shared/i18n.js'
 import { onMounted, ref } from 'vue'
-import { request } from '../../../shared/api.js'
+import { useI18n } from 'vue-i18n'
+import { getPublicData } from '../../../shared/publicData.js'
 import PostCard from '../components/PostCard.vue'
+import PostCardSkeleton from '../components/PostCardSkeleton.vue'
 
 const posts = ref([])
+const { t } = useI18n()
 const contacts = ref({})
 const site = ref({
   name: 'iBlog',
@@ -43,14 +47,14 @@ async function load() {
   error.value = ''
   try {
     const [articles, settings] = await Promise.all([
-      request('/api/v1/articles?page=1&pageSize=3'),
-      request('/api/v1/settings'),
+      getPublicData('/api/v1/articles?page=1&pageSize=3'),
+      getPublicData('/api/v1/settings'),
     ])
     posts.value = articles.items || []
     contacts.value = settings.contacts || {}
     site.value = { ...site.value, ...(settings.site || {}) }
   } catch (e) {
-    error.value = e.message
+    error.value = errorMessage(e)
   } finally {
     loading.value = false
   }
@@ -88,16 +92,18 @@ onMounted(load)
   </section>
   <section class="section">
     <div class="container article-list-container">
-      <div class="section-head"><h2 class="section-title">最新文章</h2></div>
-      <p v-if="loading" class="muted">正在加载文章…</p>
+      <div class="section-head">
+        <h2 class="section-title">{{ t('web.latest') }}</h2>
+      </div>
+      <div v-if="loading" class="post-list"><PostCardSkeleton v-for="i in 3" :key="i" /></div>
       <div v-else-if="error" role="alert">
         <p>{{ error }}</p>
-        <button class="btn" @click="load">重试</button>
+        <button class="btn" @click="load">{{ t('web.retry') }}</button>
       </div>
       <div v-else-if="posts.length" class="post-list">
         <PostCard v-for="post in posts" :key="post.id" :post="post" />
       </div>
-      <p v-else class="muted">还没有文章。</p>
+      <p v-else class="muted">{{ t('web.noArticles') }}</p>
     </div>
   </section>
 </template>

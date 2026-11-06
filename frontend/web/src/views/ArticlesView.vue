@@ -1,11 +1,15 @@
 <script setup>
+import { errorMessage } from '../../../shared/i18n.js'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { request } from '../../../shared/api.js'
+import { getPublicData } from '../../../shared/publicData.js'
 import PostCard from '../components/PostCard.vue'
+import PostCardSkeleton from '../components/PostCardSkeleton.vue'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const posts = ref([])
 const tags = ref([])
 const selected = ref(String(route.query.tag || ''))
@@ -17,12 +21,9 @@ const pageSize = 12
 const total = ref(0)
 let timer
 let requestId = 0
-let requestController
 const hasMore = computed(() => posts.value.length < total.value)
 async function load({ append = false } = {}) {
   const currentRequest = ++requestId
-  requestController?.abort()
-  requestController = new AbortController()
   loading.value = true
   error.value = ''
   const targetPage = append ? page.value + 1 : 1
@@ -30,14 +31,14 @@ async function load({ append = false } = {}) {
   if (selected.value) q.set('tag', selected.value)
   if (search.value.trim()) q.set('q', search.value.trim())
   try {
-    const result = await request(`/api/v1/articles?${q}`, { signal: requestController.signal })
+    const result = await getPublicData(`/api/v1/articles?${q}`)
     if (currentRequest !== requestId) return
     posts.value = append ? [...posts.value, ...(result.items || [])] : result.items || []
     page.value = targetPage
     total.value = result.total || 0
   } catch (e) {
     if (currentRequest !== requestId) return
-    error.value = e.message
+    error.value = errorMessage(e)
     if (!append) posts.value = []
   } finally {
     if (currentRequest === requestId) loading.value = false
@@ -90,20 +91,19 @@ watch(
 onMounted(async () => {
   load()
   try {
-    tags.value = await request('/api/v1/tags')
+    tags.value = await getPublicData('/api/v1/tags')
   } catch {}
 })
 onBeforeUnmount(() => {
   clearTimeout(timer)
-  requestController?.abort()
 })
 </script>
 
 <template>
   <section class="page-head">
     <div class="container article-list-container">
-      <h1>文章</h1>
-      <p class="sub">这里是我的文字。偶尔更新，尽量真诚。</p>
+      <h1>{{ t('web.articles') }}</h1>
+      <p class="sub">{{ t('web.articlesIntro') }}</p>
     </div>
   </section>
   <section class="section">
@@ -113,14 +113,14 @@ onBeforeUnmount(() => {
         ><input
           v-model="search"
           type="search"
-          placeholder="搜索文章标题、标签或摘要…"
-          aria-label="搜索文章"
+          :placeholder="t('web.searchPlaceholder')"
+          :aria-label="t('web.searchLabel')"
           autocomplete="off"
         /><button
           v-if="search"
           class="search-clear"
           type="button"
-          aria-label="清空搜索"
+          :aria-label="t('web.clearSearch')"
           @click="search = ''"
         >
           ×
@@ -137,29 +137,29 @@ onBeforeUnmount(() => {
           {{ tag.name }} <span class="tag-count">{{ tag.count }}</span>
         </button>
       </div>
-      <p v-if="loading" class="muted">正在加载…</p>
+      <div v-if="loading" class="post-list"><PostCardSkeleton v-for="i in 4" :key="i" /></div>
       <div v-else-if="error" role="alert">
         <p>{{ error }}</p>
-        <button class="btn" @click="load">重试</button>
+        <button class="btn" @click="load">{{ t('web.retry') }}</button>
       </div>
       <div v-else-if="posts.length" class="post-list">
         <PostCard v-for="post in posts" :key="post.id" :post="post" />
       </div>
       <div v-if="!loading && !error && !posts.length" class="empty-state">
-        <p>{{ search || selected ? '没有找到符合条件的文章。' : '还没有文章。' }}</p>
+        <p>{{ search || selected ? t('web.noMatches') : t('web.noArticlesYet') }}</p>
         <button v-if="search || selected" class="btn btn-secondary" @click="clearFilters">
-          清空筛选
+          {{ t('web.clearFilters') }}
         </button>
       </div>
       <div v-if="posts.length" class="load-more-row">
-        <span class="muted">已显示 {{ posts.length }} / {{ total }} 篇</span
+        <span class="muted">{{ t('web.shown', { shown: posts.length, total }) }}</span
         ><button
           v-if="hasMore"
           class="btn btn-secondary"
           :disabled="loading"
           @click="load({ append: true })"
         >
-          {{ loading ? '加载中…' : '加载更多' }}
+          {{ loading ? t('web.loadingMore') : t('web.loadMore') }}
         </button>
       </div>
     </div>

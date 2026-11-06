@@ -1,10 +1,14 @@
 <script setup>
+import { errorMessage } from '../../../shared/i18n.js'
 import { onMounted, ref } from 'vue'
-import { request } from '../../../shared/api.js'
+import { useI18n } from 'vue-i18n'
+import { getPublicData } from '../../../shared/publicData.js'
+import FriendCardSkeleton from '../components/FriendCardSkeleton.vue'
 
 const friends = ref([])
 const error = ref('')
 const loading = ref(true)
+const { t } = useI18n()
 function safeHref(value) {
   try {
     const url = new URL(value)
@@ -17,9 +21,9 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    friends.value = (await request('/api/v1/friends')).items || []
+    friends.value = (await getPublicData('/api/v1/friends')).items || []
   } catch (e) {
-    error.value = e.message
+    error.value = errorMessage(e)
   } finally {
     loading.value = false
   }
@@ -30,18 +34,19 @@ onMounted(load)
 <template>
   <section class="page-head">
     <div class="container">
-      <h1>友链</h1>
+      <h1>{{ t('web.friends') }}</h1>
       <p class="sub">
-        一些常去逛的地方，也欢迎你加入。想交换友链？<RouterLink to="/about">给我写信</RouterLink>。
+        {{ t('web.friendsInvite') }} <RouterLink to="/about">{{ t('web.contact') }}</RouterLink
+        >。
       </p>
     </div>
   </section>
   <section class="section">
     <div class="container friends-grid">
-      <p v-if="loading">正在加载…</p>
+      <div v-if="loading" class="friends-grid"><FriendCardSkeleton v-for="i in 3" :key="i" /></div>
       <div v-else-if="error" role="alert">
         <p>{{ error }}</p>
-        <button class="btn" @click="load">重试</button>
+        <button class="btn" @click="load">{{ t('web.retry') }}</button>
       </div>
       <template v-else
         ><a
@@ -68,7 +73,7 @@ onMounted(load)
             ><span class="friend-desc">{{ friend.description || friend.url }}</span></span
           ></a
         >
-        <p v-if="!friends.length" class="muted">还没有友链。</p></template
+        <p v-if="!friends.length" class="muted">{{ t('web.noFriends') }}</p></template
       >
     </div>
   </section>
