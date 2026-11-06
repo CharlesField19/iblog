@@ -119,7 +119,12 @@ async function logout() {
             :aria-label="$t('languageSwitch')"
             @click="toggleLocale"
           >
-            {{ $t('language') }}
+            <span
+              class="language-glyph"
+              :class="{ 'language-glyph--english': $t('language') === '中' }"
+              aria-hidden="true"
+              >{{ $t('language') === '中' ? 'E' : '中' }}</span
+            >
           </button>
         </div>
       </div>
