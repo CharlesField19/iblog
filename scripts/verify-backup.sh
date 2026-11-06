@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 backup="${1:?usage: $0 BACKUP.tar.gz [IMAGE]}"
-image="${2:-ghcr.io/charlesfield19/iblog:v1.0.1}"
+image="${2:-ghcr.io/charlesfield19/iblog:v1.0.5}"
 case "$backup" in /*) ;; *) backup="$(pwd)/$backup" ;; esac
 test -s "$backup"
 volume="iblog-backup-check-$$"
