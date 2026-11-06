@@ -11,8 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -28,6 +28,8 @@ type server struct {
 	webDist, adminDist string
 	loginMu            sync.Mutex
 	loginFailures      map[string]loginFailure
+	viewMu             sync.Mutex
+	pendingViews       map[int64]int64
 }
 type loginFailure struct {
 	count   int
@@ -37,6 +39,15 @@ type apiError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
+
+type requestContextKey string
+
+const (
+	requestIDKey requestContextKey = "request-id"
+	usernameKey  requestContextKey = "username"
+)
+
+const sessionCookieName = "iblog_session"
 
 const (
 	maxLoginBodyBytes   = 4 << 10
@@ -48,18 +59,25 @@ const (
 	maxTagLen           = 24
 	maxArticleTags      = 10
 )
+
 type article struct {
-	ID          int64    `json:"id"`
-	Slug        string   `json:"slug"`
-	Title       string   `json:"title"`
-	Summary     string   `json:"summary"`
-	Tags        []string `json:"tags"`
-	Status      string   `json:"status"`
-	Views       int64    `json:"views"`
-	CreatedAt   string   `json:"createdAt"`
-	UpdatedAt   string   `json:"updatedAt"`
-	PublishedAt *string  `json:"publishedAt"`
-	ContentMD   *string  `json:"contentMd,omitempty"`
+	ID          int64        `json:"id"`
+	Slug        string       `json:"slug"`
+	Title       string       `json:"title"`
+	Summary     string       `json:"summary"`
+	Tags        []string     `json:"tags"`
+	Status      string       `json:"status"`
+	Views       int64        `json:"views"`
+	CreatedAt   string       `json:"createdAt"`
+	UpdatedAt   string       `json:"updatedAt"`
+	PublishedAt *string      `json:"publishedAt"`
+	ContentMD   *string      `json:"contentMd,omitempty"`
+	Previous    *articleLink `json:"previous,omitempty"`
+	Next        *articleLink `json:"next,omitempty"`
+}
+type articleLink struct {
+	Slug  string `json:"slug"`
+	Title string `json:"title"`
 }
 type friend struct {
 	ID          int64  `json:"id"`
@@ -123,6 +141,33 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
+func (s *server) robots(w http.ResponseWriter, r *http.Request) {
+	base := strings.TrimRight(env("BLOG_PUBLIC_URL", "http://localhost:11190"), "/")
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprintf(w, "User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /api/\nDisallow: /articles?\nSitemap: %s/sitemap.xml\n", base)
+}
+func (s *server) sitemap(w http.ResponseWriter, r *http.Request) {
+	base := strings.TrimRight(env("BLOG_PUBLIC_URL", "http://localhost:11190"), "/")
+	rows, err := s.db.QueryContext(r.Context(), "SELECT slug,updated_at FROM articles WHERE status='published' ORDER BY updated_at DESC")
+	if err != nil {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
+	}
+	defer rows.Close()
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	w.WriteHeader(200)
+	fmt.Fprint(w, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">")
+	for _, path := range []string{"/", "/articles", "/about", "/friends"} {
+		fmt.Fprintf(w, "<url><loc>%s</loc></url>", html.EscapeString(base+path))
+	}
+	for rows.Next() {
+		var slug, updated string
+		if rows.Scan(&slug, &updated) == nil {
+			fmt.Fprintf(w, "<url><loc>%s/articles/%s</loc><lastmod>%s</lastmod></url>", html.EscapeString(base), html.EscapeString(url.PathEscape(slug)), html.EscapeString(updated))
+		}
+	}
+	fmt.Fprint(w, "</urlset>")
+}
 
 func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -136,6 +181,11 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "bad_request", "status 必须为 draft 或 published")
 		return
 	}
+	sortBy := q.Get("sort")
+	if admin && sortBy != "" && sortBy != "updated" && sortBy != "oldest" && sortBy != "title" && sortBy != "views" {
+		fail(w, 400, "bad_request", "sort 参数无效")
+		return
+	}
 	where := []string{}
 	args := []any{}
 	if !admin {
@@ -145,9 +195,9 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		args = append(args, st)
 	}
 	if text := strings.TrimSpace(q.Get("q")); text != "" {
-		where = append(where, "(a.title LIKE ? ESCAPE '\\' OR a.summary LIKE ? ESCAPE '\\' OR a.content_md LIKE ? ESCAPE '\\')")
+		where = append(where, "(a.title LIKE ? ESCAPE '\\' OR a.summary LIKE ? ESCAPE '\\' OR a.content_md LIKE ? ESCAPE '\\' OR EXISTS(SELECT 1 FROM article_tags sx JOIN tags st ON st.id=sx.tag_id WHERE sx.article_id=a.id AND st.name LIKE ? ESCAPE '\\'))")
 		v := "%" + escapeLike(text) + "%"
-		args = append(args, v, v, v)
+		args = append(args, v, v, v, v)
 	}
 	if tag := strings.TrimSpace(q.Get("tag")); tag != "" {
 		where = append(where, "EXISTS(SELECT 1 FROM article_tags x JOIN tags z ON z.id=x.tag_id WHERE x.article_id=a.id AND z.name=?)")
@@ -163,7 +213,16 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	queryArgs := append(append([]any{}, args...), size, (page-1)*size)
-	rows, err := s.db.QueryContext(r.Context(), "SELECT a.id,a.slug,a.title,a.summary,a.status,a.views,a.created_at,a.updated_at,a.published_at FROM articles a"+clause+" ORDER BY COALESCE(a.published_at,a.updated_at) DESC,a.id DESC LIMIT ? OFFSET ?", queryArgs...)
+	orderBy := "COALESCE(a.published_at,a.updated_at) DESC,a.id DESC"
+	switch sortBy {
+	case "oldest":
+		orderBy = "COALESCE(a.published_at,a.updated_at) ASC,a.id ASC"
+	case "title":
+		orderBy = "a.title COLLATE NOCASE ASC,a.id ASC"
+	case "views":
+		orderBy = "a.views DESC,a.id DESC"
+	}
+	rows, err := s.db.QueryContext(r.Context(), "SELECT a.id,a.slug,a.title,a.summary,a.status,a.views,a.created_at,a.updated_at,a.published_at FROM articles a"+clause+" ORDER BY "+orderBy+" LIMIT ? OFFSET ?", queryArgs...)
 	if err != nil {
 		fail(w, 500, "internal", "服务器内部错误")
 		return
@@ -221,20 +280,24 @@ func pageParams(q url.Values) (int, int, bool) {
 	}
 	return page, size, page >= 1 && size >= 1 && size <= 100 && page <= 1000000
 }
-func (s *server) tagsFor(ctx context.Context, id int64) []string {
+func (s *server) tagsFor(ctx context.Context, id int64) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT t.name FROM tags t JOIN article_tags x ON x.tag_id=t.id WHERE x.article_id=? ORDER BY t.name", id)
 	if err != nil {
-		return []string{}
+		return nil, err
 	}
 	defer rows.Close()
 	out := []string{}
 	for rows.Next() {
 		var v string
-		if rows.Scan(&v) == nil {
-			out = append(out, v)
+		if err := rows.Scan(&v); err != nil {
+			return nil, err
 		}
+		out = append(out, v)
 	}
-	return out
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // tagsForMany loads tags for a whole page in one query. The previous
@@ -273,17 +336,78 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 	a, err := s.articleBy(r, slug, true)
 	if err != nil {
-		fail(w, 404, "not_found", "文章不存在")
+		if errors.Is(err, sql.ErrNoRows) {
+			fail(w, 404, "not_found", "文章不存在")
+		} else {
+			fail(w, 500, "internal", "服务器内部错误")
+		}
 		return
 	}
 	if a.Status != "published" {
 		fail(w, 404, "not_found", "文章不存在")
 		return
 	}
-	if _, err := s.db.ExecContext(r.Context(), "UPDATE articles SET views=views+1 WHERE id=?", a.ID); err == nil {
-		a.Views++
+	s.recordView(a.ID)
+	var previous, next articleLink
+	stamp := a.UpdatedAt
+	if a.PublishedAt != nil {
+		stamp = *a.PublishedAt
+	}
+	if err := s.db.QueryRowContext(r.Context(), "SELECT slug,title FROM articles WHERE status='published' AND (COALESCE(published_at,updated_at) < ? OR (COALESCE(published_at,updated_at) = ? AND id < ?)) ORDER BY COALESCE(published_at,updated_at) DESC,id DESC LIMIT 1", stamp, stamp, a.ID).Scan(&previous.Slug, &previous.Title); err == nil {
+		a.Previous = &previous
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
+	}
+	if err := s.db.QueryRowContext(r.Context(), "SELECT slug,title FROM articles WHERE status='published' AND (COALESCE(published_at,updated_at) > ? OR (COALESCE(published_at,updated_at) = ? AND id > ?)) ORDER BY COALESCE(published_at,updated_at) ASC,id ASC LIMIT 1", stamp, stamp, a.ID).Scan(&next.Slug, &next.Title); err == nil {
+		a.Next = &next
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
 	}
 	writeJSON(w, 200, a)
+}
+func (s *server) recordView(articleID int64) {
+	s.viewMu.Lock()
+	defer s.viewMu.Unlock()
+	if s.pendingViews == nil {
+		s.pendingViews = make(map[int64]int64)
+	}
+	s.pendingViews[articleID]++
+}
+
+func (s *server) flushViews(ctx context.Context) error {
+	s.viewMu.Lock()
+	if len(s.pendingViews) == 0 {
+		s.viewMu.Unlock()
+		return nil
+	}
+	pending := s.pendingViews
+	s.pendingViews = make(map[int64]int64)
+	s.viewMu.Unlock()
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err == nil {
+		for id, count := range pending {
+			if _, err = tx.ExecContext(ctx, "UPDATE articles SET views=views+? WHERE id=?", count, id); err != nil {
+				break
+			}
+		}
+	}
+	if err == nil {
+		err = tx.Commit()
+	} else if tx != nil {
+		_ = tx.Rollback()
+	}
+	if err != nil {
+		s.viewMu.Lock()
+		for id, count := range pending {
+			s.pendingViews[id] += count
+		}
+		s.viewMu.Unlock()
+		return err
+	}
+	return nil
 }
 func (s *server) articleBy(r *http.Request, key string, bySlug bool) (article, error) {
 	var a article
@@ -300,13 +424,22 @@ func (s *server) articleBy(r *http.Request, key string, bySlug bool) (article, e
 	}
 	var content string
 	if e := row.Scan(&a.ID, &a.Slug, &a.Title, &a.Summary, &content, &a.Status, &a.Views, &a.CreatedAt, &a.UpdatedAt, &pub); e != nil {
-		return a, e
+		if !bySlug || !errors.Is(e, sql.ErrNoRows) {
+			return a, e
+		}
+		row = s.db.QueryRowContext(r.Context(), "SELECT a.id,a.slug,a.title,a.summary,a.content_md,a.status,a.views,a.created_at,a.updated_at,a.published_at FROM article_slug_aliases x JOIN articles a ON a.id=x.article_id WHERE x.slug=?", key)
+		if e = row.Scan(&a.ID, &a.Slug, &a.Title, &a.Summary, &content, &a.Status, &a.Views, &a.CreatedAt, &a.UpdatedAt, &pub); e != nil {
+			return a, e
+		}
 	}
 	a.ContentMD = &content
 	if pub.Valid {
 		a.PublishedAt = &pub.String
 	}
-	a.Tags = s.tagsFor(r.Context(), a.ID)
+	a.Tags, err = s.tagsFor(r.Context(), a.ID)
+	if err != nil {
+		return a, err
+	}
 	return a, nil
 }
 func (s *server) tags(w http.ResponseWriter, r *http.Request) {
@@ -460,7 +593,11 @@ func (s *server) createArticle(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal", "服务器内部错误")
 		return
 	}
-	a, _ := s.articleBy(r, strconv.FormatInt(id, 10), false)
+	a, err := s.articleBy(r, strconv.FormatInt(id, 10), false)
+	if err != nil {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
+	}
 	writeJSON(w, 201, a)
 }
 
@@ -551,6 +688,12 @@ func (s *server) updateArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+	if old.Slug != in.Slug {
+		if _, err = tx.ExecContext(r.Context(), "INSERT OR IGNORE INTO article_slug_aliases(slug,article_id,created_at) VALUES(?,?,?)", old.Slug, old.ID, t); err != nil {
+			fail(w, 500, "internal", "服务器内部错误")
+			return
+		}
+	}
 	res, err := tx.ExecContext(r.Context(), "UPDATE articles SET slug=?,title=?,summary=?,content_md=?,status=?,updated_at=?,published_at=? WHERE id=?", in.Slug, in.Title, in.Summary, in.Content, in.Status, t, pv, old.ID)
 	if err != nil {
 		if strings.Contains(strings.ToUpper(err.Error()), "UNIQUE") {
@@ -576,7 +719,11 @@ func (s *server) updateArticle(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal", "服务器内部错误")
 		return
 	}
-	a, _ := s.articleBy(r, id, false)
+	a, err := s.articleBy(r, id, false)
+	if err != nil {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
+	}
 	writeJSON(w, 200, a)
 }
 func (s *server) deleteArticle(w http.ResponseWriter, r *http.Request) {
@@ -592,6 +739,42 @@ func (s *server) deleteArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+func (s *server) batchArticles(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		IDs    []int64 `json:"ids"`
+		Action string  `json:"action"`
+	}
+	if decodeLimit(r, &in, 64<<10) != nil || len(in.IDs) == 0 || len(in.IDs) > 100 || (in.Action != "publish" && in.Action != "archive" && in.Action != "delete") {
+		fail(w, 400, "bad_request", "批量操作参数无效")
+		return
+	}
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
+	}
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(in.IDs)), ",")
+	args := make([]any, len(in.IDs))
+	for i, id := range in.IDs {
+		args[i] = id
+	}
+	var result sql.Result
+	switch in.Action {
+	case "publish":
+		result, err = tx.ExecContext(r.Context(), "UPDATE articles SET status='published', published_at=COALESCE(published_at,?), updated_at=? WHERE id IN ("+placeholders+")", append([]any{now(), now()}, args...)...)
+	case "archive":
+		result, err = tx.ExecContext(r.Context(), "UPDATE articles SET status='draft', updated_at=? WHERE id IN ("+placeholders+")", append([]any{now()}, args...)...)
+	case "delete":
+		result, err = tx.ExecContext(r.Context(), "DELETE FROM articles WHERE id IN ("+placeholders+")", args...)
+	}
+	if err != nil || tx.Commit() != nil {
+		_ = tx.Rollback()
+		fail(w, 500, "internal", "批量操作失败")
+		return
+	}
+	n, _ := result.RowsAffected()
+	writeJSON(w, 200, map[string]any{"affected": n})
 }
 
 func (s *server) saveTag(w http.ResponseWriter, r *http.Request) {
@@ -808,11 +991,17 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 		ttl = 72
 	}
 	exp := time.Now().UTC().Add(time.Duration(ttl) * time.Hour)
-	token, err := makeToken(username, env("BLOG_JWT_SECRET", ""), exp)
+	var version int
+	if err := s.db.QueryRowContext(r.Context(), "SELECT token_version FROM users WHERE id=?", id).Scan(&version); err != nil {
+		fail(w, 500, "internal", "登录服务暂不可用")
+		return
+	}
+	token, err := makeToken(username, version, env("BLOG_JWT_SECRET", ""), exp)
 	if err != nil {
 		fail(w, 500, "internal", "JWT secret 未配置")
 		return
 	}
+	setSessionCookie(w, token, exp)
 	writeJSON(w, 200, map[string]string{"token": token, "expiresAt": exp.Format(time.RFC3339)})
 }
 func (s *server) loginBlocked(ip string) bool {
@@ -856,13 +1045,13 @@ func (s *server) clearLoginFailures(ip string) {
 	defer s.loginMu.Unlock()
 	delete(s.loginFailures, ip)
 }
-func makeToken(username, secret string, exp time.Time) (string, error) {
+func makeToken(username string, version int, secret string, exp time.Time) (string, error) {
 	if secret == "" {
 		return "", errors.New("missing signing secret")
 	}
 	enc := base64.RawURLEncoding
 	head, _ := json.Marshal(map[string]string{"alg": "HS256", "typ": "JWT"})
-	body, _ := json.Marshal(map[string]any{"username": username, "iss": "blog", "sub": username, "iat": time.Now().Unix(), "exp": exp.Unix()})
+	body, _ := json.Marshal(map[string]any{"username": username, "iss": "blog", "sub": username, "ver": version, "iat": time.Now().Unix(), "exp": exp.Unix()})
 	input := enc.EncodeToString(head) + "." + enc.EncodeToString(body)
 	m := hmac.New(sha256.New, []byte(secret))
 	m.Write([]byte(input))
@@ -871,6 +1060,11 @@ func makeToken(username, secret string, exp time.Time) (string, error) {
 func (s *server) authorize(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authorization := r.Header.Get("Authorization")
+		if authorization == "" {
+			if cookie, err := r.Cookie(sessionCookieName); err == nil {
+				authorization = "Bearer " + cookie.Value
+			}
+		}
 		if !strings.HasPrefix(authorization, "Bearer ") {
 			fail(w, 401, "unauthorized", "missing bearer token")
 			return
@@ -903,6 +1097,7 @@ func (s *server) authorize(next http.Handler) http.Handler {
 			IssuedAt int64  `json:"iat"`
 			Issuer   string `json:"iss"`
 			Subject  string `json:"sub"`
+			Version  int    `json:"ver"`
 		}
 		nowUnix := time.Now().Unix()
 		if e != nil || json.Unmarshal(b, &c) != nil || c.Username == "" || c.Issuer != "blog" || c.Subject != c.Username || c.IssuedAt <= 0 || c.IssuedAt > nowUnix+60 || c.Exp <= nowUnix || c.Exp <= c.IssuedAt {
@@ -910,11 +1105,12 @@ func (s *server) authorize(next http.Handler) http.Handler {
 			return
 		}
 		var stored string
-		if s.db.QueryRowContext(r.Context(), "SELECT username FROM users ORDER BY id LIMIT 1").Scan(&stored) != nil || stored != c.Username {
+		var version int
+		if s.db.QueryRowContext(r.Context(), "SELECT username,token_version FROM users ORDER BY id LIMIT 1").Scan(&stored, &version) != nil || stored != c.Username || c.Version < 1 || version != c.Version {
 			fail(w, 401, "unauthorized", "invalid or expired token")
 			return
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), usernameKey, c.Username)))
 	})
 }
 func (s *server) changeAccount(w http.ResponseWriter, r *http.Request) {
@@ -927,7 +1123,7 @@ func (s *server) changeAccount(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "bad_request", "用户名需为3-32位字母数字-_")
 			return
 		}
-		if _, err := s.db.ExecContext(r.Context(), "UPDATE users SET username=? WHERE id=(SELECT id FROM users ORDER BY id LIMIT 1)", in.Username); err != nil {
+		if _, err := s.db.ExecContext(r.Context(), "UPDATE users SET username=?,token_version=token_version+1 WHERE id=(SELECT id FROM users ORDER BY id LIMIT 1)", in.Username); err != nil {
 			fail(w, 500, "internal", "服务器内部错误")
 			return
 		}
@@ -952,7 +1148,7 @@ func (s *server) changeAccount(w http.ResponseWriter, r *http.Request) {
 			fail(w, 500, "internal", "服务器内部错误")
 			return
 		}
-		if _, err = s.db.ExecContext(r.Context(), "UPDATE users SET password_hash=? WHERE id=?", hash, id); err != nil {
+		if _, err = s.db.ExecContext(r.Context(), "UPDATE users SET password_hash=?,token_version=token_version+1 WHERE id=?", hash, id); err != nil {
 			fail(w, 500, "internal", "服务器内部错误")
 			return
 		}
@@ -961,24 +1157,50 @@ func (s *server) changeAccount(w http.ResponseWriter, r *http.Request) {
 }
 func (s *server) loginFromAccount(w http.ResponseWriter, r *http.Request, u string, includeUsername bool) {
 	ttl, _ := strconv.Atoi(env("BLOG_TOKEN_TTL_HOURS", "72"))
-	if ttl < 1 {
+	if ttl < 1 || ttl > 720 {
 		ttl = 72
 	}
 	exp := time.Now().Add(time.Duration(ttl) * time.Hour)
-	token, e := makeToken(u, env("BLOG_JWT_SECRET", ""), exp)
+	var version int
+	if e := s.db.QueryRowContext(r.Context(), "SELECT token_version FROM users WHERE username=?", u).Scan(&version); e != nil {
+		fail(w, 500, "internal", "登录服务暂不可用")
+		return
+	}
+	token, e := makeToken(u, version, env("BLOG_JWT_SECRET", ""), exp)
 	if e != nil {
 		fail(w, 500, "internal", "JWT secret 未配置")
 		return
 	}
 	response := map[string]string{"token": token, "expiresAt": exp.UTC().Format(time.RFC3339)}
+	setSessionCookie(w, token, exp)
 	if includeUsername {
 		response["username"] = u
 	}
 	writeJSON(w, 200, response)
 }
 
+func setSessionCookie(w http.ResponseWriter, token string, expires time.Time) {
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: token, Path: "/", Expires: expires, MaxAge: int(time.Until(expires).Seconds()), HttpOnly: true, Secure: env("BLOG_COOKIE_SECURE", "false") == "true", SameSite: http.SameSiteLaxMode})
+}
+func clearSessionCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1, Expires: time.Unix(1, 0), HttpOnly: true, Secure: env("BLOG_COOKIE_SECURE", "false") == "true", SameSite: http.SameSiteLaxMode})
+}
+func (s *server) logout(w http.ResponseWriter, r *http.Request) {
+	_, err := s.db.ExecContext(r.Context(), "UPDATE users SET token_version=token_version+1")
+	if err != nil {
+		fail(w, 500, "internal", "退出登录失败")
+		return
+	}
+	clearSessionCookie(w)
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
 func (s *server) adminHandler(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
+	if p == "/api/v1/admin/articles/batch" && r.Method == "POST" {
+		s.batchArticles(w, r)
+		return
+	}
 	for _, kind := range []string{"articles", "tags", "friends"} {
 		prefix := "/api/v1/admin/" + kind + "/"
 		if strings.HasPrefix(p, prefix) {
@@ -1014,7 +1236,11 @@ func (s *server) adminHandler(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
 			a, e := s.articleBy(r, r.PathValue("id"), false)
 			if e != nil {
-				fail(w, 404, "not_found", "文章不存在")
+				if errors.Is(e, sql.ErrNoRows) {
+					fail(w, 404, "not_found", "文章不存在")
+				} else {
+					fail(w, 500, "internal", "服务器内部错误")
+				}
 			} else {
 				writeJSON(w, 200, a)
 			}
@@ -1082,6 +1308,8 @@ func (s *server) adminHandler(w http.ResponseWriter, r *http.Request) {
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/health", s.health)
+	mux.HandleFunc("GET /robots.txt", s.robots)
+	mux.HandleFunc("GET /sitemap.xml", s.sitemap)
 	mux.HandleFunc("GET /api/v1/articles", s.listArticles)
 	mux.HandleFunc("GET /api/v1/articles/{slug}", s.getArticle)
 	mux.HandleFunc("GET /api/v1/tags", s.tags)
@@ -1090,7 +1318,10 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/auth/setup-status", s.setupStatus)
 	mux.HandleFunc("POST /api/v1/auth/setup", s.setupAdmin)
 	mux.HandleFunc("POST /api/v1/auth/login", s.login)
-	admin := http.HandlerFunc(s.adminHandler)
+	mux.Handle("POST /api/v1/auth/logout", s.authorize(http.HandlerFunc(s.logout)))
+	admin := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.adminHandler(w, r)
+	})
 	mux.Handle("/api/v1/admin/", s.authorize(admin))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -1115,68 +1346,6 @@ func (s *server) routes() http.Handler {
 	return recoverer(requestLogger(s.securityHeaders(mux)))
 }
 
-type statusWriter struct {
-	http.ResponseWriter
-	status int
-}
-
-func (w *statusWriter) WriteHeader(status int) {
-	if w.status != 0 {
-		return
-	}
-	w.status = status
-	w.ResponseWriter.WriteHeader(status)
-}
-
-func (w *statusWriter) Write(body []byte) (int, error) {
-	if w.status == 0 {
-		w.status = http.StatusOK
-	}
-	return w.ResponseWriter.Write(body)
-}
-
-func requestLogger(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		started := time.Now()
-		wrapped := &statusWriter{ResponseWriter: w}
-		next.ServeHTTP(wrapped, r)
-		log.Printf("http method=%s path=%s status=%d duration=%s", r.Method, r.URL.Path, wrapped.status, time.Since(started).Round(time.Millisecond))
-	})
-}
-func (s *server) securityHeaders(next http.Handler) http.Handler {
-	allowed := make(map[string]bool)
-	for _, origin := range strings.Split(env("BLOG_CORS_ORIGINS", ""), ",") {
-		if origin = strings.TrimSpace(origin); origin != "" {
-			allowed[origin] = true
-		}
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
-		if origin := r.Header.Get("Origin"); origin != "" && allowed[origin] {
-			w.Header().Set("Vary", "Origin")
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-			w.Header().Set("Access-Control-Max-Age", "86400")
-		}
-		if r.Method == http.MethodOptions && strings.HasPrefix(r.URL.Path, "/api/") {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-func recoverer(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			if recover() != nil {
-				fail(w, 500, "internal", "服务器内部错误")
-			}
-		}()
-		next.ServeHTTP(w, r)
-	})
-}
 func (s *server) setupStatus(w http.ResponseWriter, r *http.Request) {
 	var count int
 	if err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM users").Scan(&count); err != nil {
@@ -1237,10 +1406,11 @@ func (s *server) setupAdmin(w http.ResponseWriter, r *http.Request) {
 		ttl = 72
 	}
 	exp := time.Now().UTC().Add(time.Duration(ttl) * time.Hour)
-	token, err := makeToken(in.Username, env("BLOG_JWT_SECRET", ""), exp)
+	token, err := makeToken(in.Username, 1, env("BLOG_JWT_SECRET", ""), exp)
 	if err != nil {
 		fail(w, 500, "internal", "登录服务暂不可用")
 		return
 	}
+	setSessionCookie(w, token, exp)
 	writeJSON(w, 201, map[string]string{"token": token, "expiresAt": exp.Format(time.RFC3339)})
 }

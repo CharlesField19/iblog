@@ -1,9 +1,105 @@
 package main
 
 import (
+	"database/sql"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestHttpOnlySessionCookieAndLogout(t *testing.T) {
+	s := testServer(t)
+	h := s.routes()
+	if code, _ := call(t, h, "POST", "/api/v1/auth/setup", map[string]any{"username": "testadmin", "password": "test-password-123"}, ""); code != 201 {
+		t.Fatalf("setup status=%d", code)
+	}
+	r := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(`{"username":"testadmin","password":"test-password-123"}`))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	cookies := w.Result().Cookies()
+	if w.Code != 200 || len(cookies) == 0 || cookies[0].Name != sessionCookieName || !cookies[0].HttpOnly {
+		t.Fatalf("login cookie missing or not HttpOnly: status=%d cookies=%v", w.Code, w.Result().Cookies())
+	}
+	cookie := cookies[0]
+	r = httptest.NewRequest("GET", "/api/v1/admin/articles", nil)
+	r.AddCookie(cookie)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("cookie authorization status=%d body=%s", w.Code, w.Body.String())
+	}
+	r = httptest.NewRequest("POST", "/api/v1/auth/logout", nil)
+	r.AddCookie(cookie)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("logout status=%d body=%s", w.Code, w.Body.String())
+	}
+	r = httptest.NewRequest("GET", "/api/v1/admin/articles", nil)
+	r.AddCookie(cookie)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 401 {
+		t.Fatalf("revoked cookie status=%d", w.Code)
+	}
+}
+
+func TestArticleCountsFiltersAndPermissionBoundaries(t *testing.T) {
+	s := testServer(t)
+	h := s.routes()
+	token := adminToken(t, s)
+	for _, in := range []map[string]any{
+		{"title": "Go one", "slug": "go-one", "tags": []string{"Go"}, "status": "published"},
+		{"title": "Go two", "slug": "go-two", "tags": []string{"Go"}, "status": "published"},
+		{"title": "Draft secret", "slug": "draft-secret", "tags": []string{"Rust"}, "status": "draft"},
+	} {
+		if code, body := call(t, h, "POST", "/api/v1/admin/articles", in, token); code != 201 {
+			t.Fatalf("create article status=%d body=%v", code, body)
+		}
+	}
+	code, public := call(t, h, "GET", "/api/v1/articles?tag=Go&page=1&pageSize=1", nil, "")
+	if code != 200 || public["total"].(float64) != 2 || public["page"].(float64) != 1 || public["pageSize"].(float64) != 1 || len(public["items"].([]any)) != 1 {
+		t.Fatalf("filtered public pagination contract: code=%d body=%v", code, public)
+	}
+	if code, body := call(t, h, "GET", "/api/v1/articles?tag=Rust", nil, ""); code != 200 || body["total"].(float64) != 0 {
+		t.Fatalf("draft leaked to public listing: code=%d body=%v", code, body)
+	}
+	if code, body := call(t, h, "GET", "/api/v1/admin/articles?status=draft", nil, ""); code != 401 || body["error"] == nil {
+		t.Fatalf("unauthorized admin contract: code=%d body=%v", code, body)
+	}
+	if code, body := call(t, h, "GET", "/api/v1/admin/articles?status=draft", nil, token); code != 200 || body["total"].(float64) != 1 {
+		t.Fatalf("admin draft filter count: code=%d body=%v", code, body)
+	}
+}
+
+func TestRecoverAdminRevokesPreviousTokens(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("BLOG_DB_PATH", filepath.Join(dir, "blog.db"))
+	t.Setenv("BLOG_JWT_SECRET", "test-only-signing-secret")
+	db, err := sql.Open("sqlite", os.Getenv("BLOG_DB_PATH"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	if err = migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	s := &server{db: db}
+	oldToken := adminToken(t, s)
+	if err = recoverAdmin("recovered-admin", strings.NewReader("recovered-password-123\n")); err != nil {
+		t.Fatal(err)
+	}
+	if code, body := call(t, s.routes(), "GET", "/api/v1/admin/articles", nil, oldToken); code != 401 {
+		t.Fatalf("old token survived recovery: %d %v", code, body)
+	}
+	if code, body := call(t, s.routes(), "POST", "/api/v1/auth/login", map[string]any{"username": "recovered-admin", "password": "recovered-password-123"}, ""); code != 200 {
+		t.Fatalf("recovered credentials not accepted: %d %v", code, body)
+	}
+	_ = db.Close()
+}
 
 func adminToken(t *testing.T, s *server) string {
 	t.Helper()

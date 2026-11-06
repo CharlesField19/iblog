@@ -2,12 +2,16 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -33,7 +37,7 @@ func testServer(t *testing.T) *server {
 		_ = os.Setenv("BLOG_ADMIN_PASSWORD", oldPassword)
 		_ = os.Setenv("BLOG_JWT_SECRET", oldSecret)
 	})
-	return &server{db: db, webDist: "../../frontend/web/dist-rebuilt", adminDist: "../../frontend/admin/dist-rebuilt", loginFailures: make(map[string]loginFailure)}
+	return &server{db: db, webDist: "../../frontend/web/dist", adminDist: "../../frontend/admin/dist", loginFailures: make(map[string]loginFailure)}
 }
 func call(t *testing.T, h http.Handler, method, path string, body any, token string) (int, map[string]any) {
 	t.Helper()
@@ -101,6 +105,56 @@ func TestPublicAndAdminFlow(t *testing.T) {
 		t.Fatalf("delete status=%d", code)
 	}
 }
+
+func TestArticleSlugChangeKeepsOldLink(t *testing.T) {
+	s := testServer(t)
+	h := s.routes()
+	if code, _ := call(t, h, "POST", "/api/v1/auth/setup", map[string]any{"username": "testadmin", "password": "test-password-123"}, ""); code != 201 {
+		t.Fatalf("setup=%d", code)
+	}
+	_, login := call(t, h, "POST", "/api/v1/auth/login", map[string]any{"username": "testadmin", "password": "test-password-123"}, "")
+	token := login["token"].(string)
+	_, created := call(t, h, "POST", "/api/v1/admin/articles", map[string]any{"title": "Link preservation", "slug": "old-link", "contentMd": "body", "status": "published"}, token)
+	id := int(created["id"].(float64))
+	code, updated := call(t, h, "PUT", fmt.Sprintf("/api/v1/admin/articles/%d", id), map[string]any{"title": "Link preservation", "slug": "new-link", "contentMd": "body", "status": "published"}, token)
+	if code != 200 {
+		t.Fatalf("update status=%d body=%v", code, updated)
+	}
+	code, legacy := call(t, h, "GET", "/api/v1/articles/old-link", nil, "")
+	if code != 200 || legacy["slug"] != "new-link" {
+		t.Fatalf("legacy link status=%d body=%v", code, legacy)
+	}
+}
+
+func TestBatchArticleActions(t *testing.T) {
+	s := testServer(t)
+	h := s.routes()
+	if code, _ := call(t, h, "POST", "/api/v1/auth/setup", map[string]any{"username": "testadmin", "password": "test-password-123"}, ""); code != 201 {
+		t.Fatalf("setup=%d", code)
+	}
+	_, login := call(t, h, "POST", "/api/v1/auth/login", map[string]any{"username": "testadmin", "password": "test-password-123"}, "")
+	token := login["token"].(string)
+	_, first := call(t, h, "POST", "/api/v1/admin/articles", map[string]any{"title": "Draft one", "slug": "draft-one", "summary": "summary", "contentMd": "preview body", "tags": []string{"Go"}, "status": "draft"}, token)
+	_, second := call(t, h, "POST", "/api/v1/admin/articles", map[string]any{"title": "Draft two", "slug": "draft-two", "contentMd": "another body", "tags": []string{"Go"}, "status": "draft"}, token)
+	id1, id2 := int64(first["id"].(float64)), int64(second["id"].(float64))
+	code, filtered := call(t, h, "GET", "/api/v1/admin/articles?q=Go", nil, token)
+	if code != 200 || filtered["total"].(float64) != 2 {
+		t.Fatalf("tag search status=%d body=%v", code, filtered)
+	}
+	code, _ = call(t, h, "POST", "/api/v1/admin/articles/batch", map[string]any{"ids": []int64{id1}, "action": "archive"}, token)
+	if code != 200 {
+		t.Fatalf("batch archive status=%d", code)
+	}
+	code, _ = call(t, h, "POST", "/api/v1/admin/articles/batch", map[string]any{"ids": []int64{id2}, "action": "publish"}, token)
+	if code != 200 {
+		t.Fatalf("batch publish status=%d", code)
+	}
+	code, _ = call(t, h, "POST", "/api/v1/admin/articles/batch", map[string]any{"ids": []int64{id2}, "action": "delete"}, token)
+	if code != 200 {
+		t.Fatalf("batch delete status=%d", code)
+	}
+}
+
 func TestLoginRejectsBadPassword(t *testing.T) {
 	s := testServer(t)
 	if code, _ := call(t, s.routes(), "POST", "/api/v1/auth/setup", map[string]any{"username": "testadmin", "password": "test-password-123"}, ""); code != 201 {
@@ -109,6 +163,27 @@ func TestLoginRejectsBadPassword(t *testing.T) {
 	code, _ := call(t, s.routes(), "POST", "/api/v1/auth/login", map[string]any{"username": "testadmin", "password": "wrong"}, "")
 	if code != 401 {
 		t.Fatalf("status=%d", code)
+	}
+}
+
+func TestRequestCorrelationAndAuditLogsDoNotIncludeRequestBodies(t *testing.T) {
+	var output bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&output)
+	defer log.SetOutput(previous)
+	h := requestLogger(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/admin/articles/42", bytes.NewBufferString(`{"password":"do-not-log","contentMd":"private body"}`))
+	r = r.WithContext(context.WithValue(r.Context(), usernameKey, "audit-user"))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	requestID := w.Header().Get("X-Request-ID")
+	if requestID == "" || !strings.Contains(output.String(), "request_id="+requestID) || !strings.Contains(output.String(), "audit request_id="+requestID) || !strings.Contains(output.String(), "user=audit-user") {
+		t.Fatalf("missing correlation/audit log: header=%q logs=%q", requestID, output.String())
+	}
+	if strings.Contains(output.String(), "do-not-log") || strings.Contains(output.String(), "private body") {
+		t.Fatalf("sensitive request body was logged: %s", output.String())
 	}
 }
 
@@ -254,5 +329,68 @@ func TestCleanInstallAssetsAndCRUD(t *testing.T) {
 	code, listing = call(t, h, "GET", "/api/v1/articles", nil, "")
 	if code != 200 || listing["total"].(float64) != 1 {
 		t.Fatalf("publish list: %d %v", code, listing)
+	}
+}
+
+func TestSecurityAndStaticCacheHeaders(t *testing.T) {
+	s := testServer(t)
+	h := s.routes()
+	page := httptest.NewRecorder()
+	h.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/", nil))
+	if page.Code != http.StatusOK || page.Header().Get("Cache-Control") != "no-cache" || page.Header().Get("Content-Security-Policy") == "" || page.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("page security/cache headers: status=%d headers=%v", page.Code, page.Header())
+	}
+	assets, err := filepath.Glob(filepath.Join(s.webDist, "assets", "*.js"))
+	if err != nil || len(assets) == 0 {
+		t.Fatalf("find asset: %v", err)
+	}
+	asset := httptest.NewRecorder()
+	h.ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/assets/"+filepath.Base(assets[0]), nil))
+	if asset.Code != http.StatusOK || asset.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
+		t.Fatalf("asset cache headers: status=%d headers=%v", asset.Code, asset.Header())
+	}
+	t.Setenv("BLOG_COOKIE_SECURE", "true")
+	secure := httptest.NewRecorder()
+	h.ServeHTTP(secure, httptest.NewRequest(http.MethodGet, "/", nil))
+	if secure.Header().Get("Strict-Transport-Security") == "" {
+		t.Fatal("secure deployment did not set HSTS")
+	}
+}
+
+func TestViewCountsAreBufferedAndFlushedTogether(t *testing.T) {
+	s := testServer(t)
+	token := adminToken(t, s)
+	if code, body := call(t, s.routes(), http.MethodPost, "/api/v1/admin/articles", map[string]any{"title": "Views", "slug": "views-test", "status": "published"}, token); code != http.StatusCreated {
+		t.Fatalf("create article: %d %v", code, body)
+	}
+	for i := 0; i < 3; i++ {
+		if code, body := call(t, s.routes(), http.MethodGet, "/api/v1/articles/views-test", nil, ""); code != http.StatusOK {
+			t.Fatalf("read article: %d %v", code, body)
+		}
+	}
+	var before int
+	if err := s.db.QueryRow("SELECT views FROM articles WHERE slug='views-test'").Scan(&before); err != nil || before != 0 {
+		t.Fatalf("views were not buffered: value=%d err=%v", before, err)
+	}
+	if err := s.flushViews(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var after int
+	if err := s.db.QueryRow("SELECT views FROM articles WHERE slug='views-test'").Scan(&after); err != nil || after != 3 {
+		t.Fatalf("view batch not persisted: value=%d err=%v", after, err)
+	}
+}
+
+func TestArticleStorageErrorsReturnServerError(t *testing.T) {
+	s := testServer(t)
+	if _, err := s.db.Exec(`INSERT INTO articles(slug,title,content_md,status,created_at,updated_at) VALUES('query-error','Query error','body','published','now','now')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec("DROP TABLE article_tags"); err != nil {
+		t.Fatal(err)
+	}
+	code, body := call(t, s.routes(), http.MethodGet, "/api/v1/articles/query-error", nil, "")
+	if code != http.StatusInternalServerError || body["error"] == nil {
+		t.Fatalf("storage error should not be reported as not-found: status=%d body=%v", code, body)
 	}
 }

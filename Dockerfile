@@ -19,8 +19,8 @@ RUN apk add --no-cache ca-certificates tzdata wget \
     && chown -R blog:nogroup /data /app
 WORKDIR /app
 COPY --from=backend --chown=blog:nogroup /out/blog /usr/local/bin/blog
-COPY --from=frontend --chown=blog:nogroup /src/frontend/web/dist-rebuilt/ /app/static/web/
-COPY --from=frontend --chown=blog:nogroup /src/frontend/admin/dist-rebuilt/ /app/static/admin/
+COPY --from=frontend --chown=blog:nogroup /src/frontend/web/dist/ /app/static/web/
+COPY --from=frontend --chown=blog:nogroup /src/frontend/admin/dist/ /app/static/admin/
 ENV BLOG_ADDR=:11190 BLOG_DB_PATH=/data/blog.db BLOG_WEB_DIST=/app/static/web BLOG_ADMIN_DIST=/app/static/admin
 USER blog
 EXPOSE 11190

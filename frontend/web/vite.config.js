@@ -7,6 +7,6 @@ export default defineConfig({
   root,
   base: '/',
   plugins: [vue()],
-  build: { outDir: 'dist-rebuilt', emptyOutDir: true },
+  build: { outDir: 'dist', emptyOutDir: true },
   server: { proxy: { '/api': 'http://127.0.0.1:8080' } },
 })

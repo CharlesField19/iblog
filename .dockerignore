@@ -11,6 +11,7 @@ blog
 frontend/node_modules/
 frontend/web/dist/
 frontend/admin/dist/
+# Build output is generated inside the Docker frontend stage; never use host artifacts.
 frontend/web/dist-rebuilt/
 frontend/admin/dist-rebuilt/
 tools/node/

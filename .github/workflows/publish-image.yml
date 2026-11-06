@@ -26,6 +26,9 @@ jobs:
       - run: npm --prefix frontend run build
       - run: go test -count=1 ./...
       - run: go vet ./...
+      - run: docker build --pull=false -t iblog:release-check .
+      - name: Docker end-to-end and backup/restore check
+        run: node scripts/e2e-docker.mjs iblog:release-check
 
   publish:
     needs: test

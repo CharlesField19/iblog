@@ -1,6 +1,6 @@
 services:
   blog:
-    image: ghcr.io/charlesfield19/iblog:v1.0.1
+    image: ghcr.io/charlesfield19/iblog:v1.0.2
     container_name: iblog
     restart: unless-stopped
     ports:
@@ -12,6 +12,8 @@ services:
       BLOG_DB_PATH: /data/blog.db
       BLOG_WEB_DIST: /app/static/web
       BLOG_ADMIN_DIST: /app/static/admin
+      # 生产环境通过 HTTPS 域名访问时改为 "true"；本地 HTTP 预览必须保持 "false"。
+      BLOG_COOKIE_SECURE: "false"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:11190/api/v1/health"]
       interval: 30s

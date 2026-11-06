@@ -1,63 +1,45 @@
 # iBlog
 
-iBlog 是一个 Go + Vue 博客应用。正式部署使用 GitHub Actions 构建并发布 Docker 镜像到 GHCR；服务器只需 Docker Engine 和 Docker Compose，不需要安装 Go、Node.js，也不需要下载源码或在服务器编译。
+iBlog 是我为自己搭建的博客。比起追求复杂的平台能力，我更希望它简单、稳定，能让我专注写作，也能让我清楚地掌握自己的内容和数据。
 
-## 部署前提
+项目使用 Go、Vue 3 和 SQLite，并以一个 Docker 容器运行。这个选择是有意的：个人博客不需要微服务，也不应该为了部署它先维护一整套基础设施。一个容器、一份持久化数据，就能把博客运行起来。
 
-- 已发布的镜像：`ghcr.io/charlesfield19/iblog`
-- 服务器已安装 Docker Engine 和 Docker Compose 插件。
-- 如果拉取镜像时 GHCR 要求认证，请先在服务器登录 GHCR，并确保账号有镜像读取权限。
+## 我想解决的问题
 
-> 当前版本镜像只有在 GitHub Actions 的 CI 通过并推送版本标签后才会发布。版本标签工作流会运行测试、构建镜像，并推送版本标签和 `latest`。
+写文章、管理标签和页面这些事情应该足够直接。iBlog 提供文章发布与草稿、Markdown 编辑和预览、搜索与标签筛选，以及友情链接、关于页面和站点设置管理。
 
-## 首次部署
+内容保存在 SQLite 中，管理入口与公开站点一起部署。系统尽量减少外部依赖，并把备份和恢复作为日常使用的一部分，而不是等出问题后才考虑的补丁。
 
-将 `compose.yaml` 放入服务器的 Docker 部署面板或 Compose 项目目录。镜像版本和端口已经直接写在配置里，无需额外创建 `.env` 文件。然后拉取镜像并启动：
+## 部署
+
+我把部署保持在尽可能少的步骤里。服务器安装 Docker Engine 和 Docker Compose 后，使用仓库中的 `compose.yaml` 启动：
 
 ```sh
 docker compose pull
 docker compose up -d
-docker compose ps
-docker compose logs --tail=100 blog
 ```
 
-默认配置使用镜像 `ghcr.io/charlesfield19/iblog:v1.0.1`，并将主机端口 `11190` 映射到容器端口 `11190`。如需只允许本机或反向代理访问，直接在 `compose.yaml` 中修改端口：
+站点默认监听 `11190` 端口，管理入口位于 `/admin/`。第一次打开管理入口时，可以按页面提示创建管理员账号。生产环境建议通过 HTTPS 反向代理访问；HTTPS 部署时，将 `BLOG_COOKIE_SECURE` 设置为 `true`。
 
-```yaml
-ports:
-  - "127.0.0.1:10001:11190"
-```
+## 数据与备份
 
-容器内端口固定为 `11190`。默认 `11190:11190` 会绑定服务器所有网卡；是否能从公网访问还取决于防火墙规则。
+文章、账号、站点设置、数据库和会话签名密钥保存在 Docker 数据卷 `iblog_data` 中。更新或重建容器不会删除这个数据卷；**不要使用 `docker compose down -v`**，也不要手动删除 `iblog_data`。
 
-启动后访问 `http://服务器地址:端口/admin/`，按页面提示创建管理员用户名和密码。该初始化只在数据库中没有管理员时开放。管理员密码在管理界面设置，不需要写入 Compose 配置。
-
-## 数据持久化与备份
-
-文章、账号、站点设置、SQLite 数据库和自动生成的 JWT 签名密钥保存在 Docker 命名卷 `iblog_data` 中。容器更新或重建时继续使用该卷。
-
-**不要运行 `docker compose down -v`，不要删除 `iblog_data` 卷。** 删除卷会丢失博客数据和密钥。
-
-升级前请先备份。可在停服后将卷打包到部署目录之外的安全位置：
+升级之前先备份。仓库提供了备份脚本：
 
 ```sh
-BACKUP_DIR="${BLOG_BACKUP_DIR:-$HOME/blog-backups}"
-mkdir -p "$BACKUP_DIR"
-docker compose stop blog
-docker run --rm -v iblog_data:/data:ro -v "$BACKUP_DIR:/backup" alpine:3.20 \
-  tar -czf /backup/iblog-data-$(date +%F-%H%M%S).tar.gz -C / data
-docker compose start blog
+BLOG_BACKUP_DIR="$HOME/blog-backups" sh scripts/backup.sh
 ```
+
+备份也应该定期做恢复验证，并保存到服务器之外。备份文件里包含博客数据和密钥，请按敏感数据妥善保管。
 
 ## 升级与回滚
 
-镜像发布成功后，在 `compose.yaml` 中将 `image:` 改为目标版本，然后重新拉取并重建容器：
+发布新版本后，将 `compose.yaml` 中的镜像版本改为目标版本，再执行：
 
 ```sh
 docker compose pull
 docker compose up -d
-docker compose ps
-docker compose logs --tail=100 blog
 ```
 
-回滚时把 `image:` 改回先前版本，再执行相同命令。若新版本已迁移数据库，回滚前先确认旧版本兼容当前数据库；必要时从备份恢复。
+如果需要回滚，把镜像版本改回之前使用的版本，再执行同样的命令。升级前保留备份；如果新版本修改了数据库结构，回滚前先确认旧版本能读取当前数据，必要时从备份恢复。

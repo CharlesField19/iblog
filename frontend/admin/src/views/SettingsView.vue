@@ -2,17 +2,213 @@
 import { inject, onMounted, reactive, ref } from 'vue'
 import { adminRequest } from '../api.js'
 
-const toast=inject('toast');const contacts=reactive({email:'',github:'',x:'',telegram:''});const loading=ref(true);const saving=ref(false);const error=ref('')
-const site=reactive({name:'iBlog',titlePrefix:'Chenghao\'s',titleAccent:'Blog',subtitle:'Code · Life · Ideas',footerName:'Chenghao',footerText:'用代码与热爱搭建'})
-async function load(){loading.value=true;error.value='';try{const data=await adminRequest('/api/v1/admin/settings');Object.assign(contacts,{email:'',github:'',x:'',telegram:'',...(data.settings?.contacts||{})});Object.assign(site,{name:'iBlog',titlePrefix:'Chenghao\'s',titleAccent:'Blog',subtitle:'Code · Life · Ideas',footerName:'Chenghao',footerText:'用代码与热爱搭建',...(data.settings?.site||{})})}catch(e){error.value=e.message}finally{loading.value=false}}
+const toast = inject('toast')
+const contacts = reactive({ email: '', github: '', x: '', telegram: '' })
+const loading = ref(true)
+const saving = ref(false)
+const error = ref('')
+const site = reactive({
+  name: 'iBlog',
+  titlePrefix: "Chenghao's",
+  titleAccent: 'Blog',
+  subtitle: 'Code · Life · Ideas',
+  footerName: 'Chenghao',
+  footerText: '用代码与热爱搭建',
+})
+async function load() {
+  loading.value = true
+  error.value = ''
+  try {
+    const data = await adminRequest('/api/v1/admin/settings')
+    Object.assign(contacts, {
+      email: '',
+      github: '',
+      x: '',
+      telegram: '',
+      ...(data.settings?.contacts || {}),
+    })
+    Object.assign(site, {
+      name: 'iBlog',
+      titlePrefix: "Chenghao's",
+      titleAccent: 'Blog',
+      subtitle: 'Code · Life · Ideas',
+      footerName: 'Chenghao',
+      footerText: '用代码与热爱搭建',
+      ...(data.settings?.site || {}),
+    })
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    loading.value = false
+  }
+}
 onMounted(load)
-async function save(){const email=contacts.email.trim();if(email&&!email.includes('@')){toast('error','邮箱格式不正确');return}for(const [label,value] of [['GitHub',contacts.github],['X',contacts.x],['Telegram',contacts.telegram]])if(value&&!/^https?:\/\//i.test(value)){toast('error',`${label} 链接需以 http(s):// 开头`);return}saving.value=true;try{await Promise.all([adminRequest('/api/v1/admin/settings/contacts',{method:'PUT',body:Object.fromEntries(Object.entries(contacts).map(([k,v])=>[k,v.trim()]))}),adminRequest('/api/v1/admin/settings/site',{method:'PUT',body:Object.fromEntries(Object.entries(site).map(([k,v])=>[k,v.trim()]))})]);document.title=site.name.trim()||'iBlog';toast('success','设置已保存')}catch(e){toast('error',e.message)}finally{saving.value=false}}
+async function save() {
+  const email = contacts.email.trim()
+  if (email && !email.includes('@')) {
+    toast('error', '邮箱格式不正确')
+    return
+  }
+  for (const [label, value] of [
+    ['GitHub', contacts.github],
+    ['X', contacts.x],
+    ['Telegram', contacts.telegram],
+  ])
+    if (value && !/^https?:\/\//i.test(value)) {
+      toast('error', `${label} 链接需以 http(s):// 开头`)
+      return
+    }
+  saving.value = true
+  try {
+    await Promise.all([
+      adminRequest('/api/v1/admin/settings/contacts', {
+        method: 'PUT',
+        body: Object.fromEntries(Object.entries(contacts).map(([k, v]) => [k, v.trim()])),
+      }),
+      adminRequest('/api/v1/admin/settings/site', {
+        method: 'PUT',
+        body: Object.fromEntries(Object.entries(site).map(([k, v]) => [k, v.trim()])),
+      }),
+    ])
+    document.title = site.name.trim() || 'iBlog'
+    toast('success', '设置已保存')
+  } catch (e) {
+    toast('error', e.message)
+  } finally {
+    saving.value = false
+  }
+}
 </script>
 
 <template>
-  <main id="admin-content" class="admin-main" tabindex="-1"><div class="list-head"><h1>站点设置</h1><button class="btn" :disabled="saving||loading" @click="save">{{ saving?'保存中…':'保存' }}</button></div><p class="page-intro">联系方式显示在首页社交链接区和关于页。</p>
-    <p v-if="error" class="card error-card" role="alert">{{ error }} <button class="link-btn" @click="load">重试</button></p><div v-else-if="loading" class="card skeleton">加载中…</div>
-    <section v-else class="card section-card"><h2 class="section-title">主页内容</h2><p class="page-intro">这些内容会显示在首页主视觉区、浏览器标题和页脚。</p><div class="field"><label for="site-name">站点名称</label><input id="site-name" v-model="site.name" name="siteName" maxlength="80" placeholder="例如：iBlog…" autocomplete="off"></div><div class="field"><label for="site-title-prefix">主页标题（前半段）</label><input id="site-title-prefix" v-model="site.titlePrefix" name="titlePrefix" maxlength="80" placeholder="例如：Chenghao’s…" autocomplete="off"></div><div class="field"><label for="site-title-accent">主页标题（强调部分）</label><input id="site-title-accent" v-model="site.titleAccent" name="titleAccent" maxlength="80" placeholder="例如：Blog…" autocomplete="off"></div><div class="field"><label for="site-subtitle">主页标语</label><input id="site-subtitle" v-model="site.subtitle" name="subtitle" maxlength="160" placeholder="例如：Code · Life · Ideas…" autocomplete="off"></div><div class="field"><label for="site-footer-name">页脚署名</label><input id="site-footer-name" v-model="site.footerName" name="footerName" maxlength="80" placeholder="署名…" autocomplete="off"></div><div class="field"><label for="site-footer-text">页脚文案</label><input id="site-footer-text" v-model="site.footerText" name="footerText" maxlength="160" placeholder="页脚短句…" autocomplete="off"></div></section>
-    <section v-if="!loading&&!error" class="card section-card"><h2 class="section-title">联系方式</h2><div class="field"><label for="contact-email">邮箱</label><input id="contact-email" v-model="contacts.email" name="email" type="email" autocomplete="email" placeholder="name@example.com…"></div><div class="field"><label for="contact-github">GitHub 主页链接</label><input id="contact-github" v-model="contacts.github" name="github" type="url" placeholder="https://github.com/username…" autocomplete="url"></div><div class="field"><label for="contact-x">X 主页链接</label><input id="contact-x" v-model="contacts.x" name="x" type="url" placeholder="https://x.com/username…" autocomplete="url"></div><div class="field"><label for="contact-telegram">Telegram 主页链接</label><input id="contact-telegram" v-model="contacts.telegram" name="telegram" type="url" placeholder="https://t.me/username…" autocomplete="url"></div></section>
+  <main id="admin-content" class="admin-main" tabindex="-1">
+    <div class="list-head">
+      <h1>站点设置</h1>
+      <button class="btn" :disabled="saving || loading" @click="save">
+        {{ saving ? '保存中…' : '保存' }}
+      </button>
+    </div>
+    <p class="page-intro">联系方式显示在首页社交链接区和关于页。</p>
+    <p v-if="error" class="card error-card" role="alert">
+      {{ error }} <button class="link-btn" @click="load">重试</button>
+    </p>
+    <div v-else-if="loading" class="card skeleton">加载中…</div>
+    <section v-else class="card section-card">
+      <h2 class="section-title">主页内容</h2>
+      <p class="page-intro">这些内容会显示在首页主视觉区、浏览器标题和页脚。</p>
+      <div class="field">
+        <label for="site-name">站点名称</label
+        ><input
+          id="site-name"
+          v-model="site.name"
+          name="siteName"
+          maxlength="80"
+          placeholder="例如：iBlog…"
+          autocomplete="off"
+        />
+      </div>
+      <div class="field">
+        <label for="site-title-prefix">主页标题（前半段）</label
+        ><input
+          id="site-title-prefix"
+          v-model="site.titlePrefix"
+          name="titlePrefix"
+          maxlength="80"
+          placeholder="例如：Chenghao’s…"
+          autocomplete="off"
+        />
+      </div>
+      <div class="field">
+        <label for="site-title-accent">主页标题（强调部分）</label
+        ><input
+          id="site-title-accent"
+          v-model="site.titleAccent"
+          name="titleAccent"
+          maxlength="80"
+          placeholder="例如：Blog…"
+          autocomplete="off"
+        />
+      </div>
+      <div class="field">
+        <label for="site-subtitle">主页标语</label
+        ><input
+          id="site-subtitle"
+          v-model="site.subtitle"
+          name="subtitle"
+          maxlength="160"
+          placeholder="例如：Code · Life · Ideas…"
+          autocomplete="off"
+        />
+      </div>
+      <div class="field">
+        <label for="site-footer-name">页脚署名</label
+        ><input
+          id="site-footer-name"
+          v-model="site.footerName"
+          name="footerName"
+          maxlength="80"
+          placeholder="署名…"
+          autocomplete="off"
+        />
+      </div>
+      <div class="field">
+        <label for="site-footer-text">页脚文案</label
+        ><input
+          id="site-footer-text"
+          v-model="site.footerText"
+          name="footerText"
+          maxlength="160"
+          placeholder="页脚短句…"
+          autocomplete="off"
+        />
+      </div>
+    </section>
+    <section v-if="!loading && !error" class="card section-card">
+      <h2 class="section-title">联系方式</h2>
+      <div class="field">
+        <label for="contact-email">邮箱</label
+        ><input
+          id="contact-email"
+          v-model="contacts.email"
+          name="email"
+          type="email"
+          autocomplete="email"
+          placeholder="name@example.com…"
+        />
+      </div>
+      <div class="field">
+        <label for="contact-github">GitHub 主页链接</label
+        ><input
+          id="contact-github"
+          v-model="contacts.github"
+          name="github"
+          type="url"
+          placeholder="https://github.com/username…"
+          autocomplete="url"
+        />
+      </div>
+      <div class="field">
+        <label for="contact-x">X 主页链接</label
+        ><input
+          id="contact-x"
+          v-model="contacts.x"
+          name="x"
+          type="url"
+          placeholder="https://x.com/username…"
+          autocomplete="url"
+        />
+      </div>
+      <div class="field">
+        <label for="contact-telegram">Telegram 主页链接</label
+        ><input
+          id="contact-telegram"
+          v-model="contacts.telegram"
+          name="telegram"
+          type="url"
+          placeholder="https://t.me/username…"
+          autocomplete="url"
+        />
+      </div>
+    </section>
   </main>
 </template>

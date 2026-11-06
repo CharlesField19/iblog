@@ -14,7 +14,7 @@
 /.home/
 /.config/
 /tools/node/
-/frontend/web/dist-rebuilt/
-/frontend/admin/dist-rebuilt/
 /frontend/web/dist/
 /frontend/admin/dist/
+/frontend/web/dist-rebuilt/
+/frontend/admin/dist-rebuilt/

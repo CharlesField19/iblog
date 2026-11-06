@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "npm run build:web && npm run build:admin",
+    "format": "prettier --write \"{admin,web}/src/**/*.{js,vue}\" \"shared/*.js\" \"{admin,web}/src/styles/reconstruction.css\" \"{admin,web}/index.html\"",
+    "format:check": "prettier --check \"{admin,web}/src/**/*.{js,vue}\" \"shared/*.js\" \"{admin,web}/src/styles/reconstruction.css\" \"{admin,web}/index.html\"",
     "build:web": "vite build --config web/vite.config.js",
     "build:admin": "vite build --config admin/vite.config.js",
     "dev:web": "vite --config web/vite.config.js",
@@ -17,6 +19,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "6.0.10",
+    "prettier": "3.6.2",
     "vite": "7.3.5"
   }
 }
