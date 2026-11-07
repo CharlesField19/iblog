@@ -1,17 +1,18 @@
-<script setup>
-import { errorMessage } from '../../../shared/i18n.js'
+<script setup lang="ts">
+import { errorMessage } from '../../../shared/i18n'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { getPublicData } from '../../../shared/publicData.js'
+import { getPublicData } from '../../../shared/publicData'
+import type { ArticleSummary, PublicTag, PageResult } from '../../../shared/contracts'
 import PostCard from '../components/PostCard.vue'
 import PostCardSkeleton from '../components/PostCardSkeleton.vue'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
-const posts = ref([])
-const tags = ref([])
+const posts = ref<ArticleSummary[]>([])
+const tags = ref<PublicTag[]>([])
 const selected = ref(String(route.query.tag || ''))
 const search = ref(String(route.query.q || ''))
 const loading = ref(true)
@@ -19,7 +20,7 @@ const error = ref('')
 const page = ref(1)
 const pageSize = 12
 const total = ref(0)
-let timer
+let timer: ReturnType<typeof setTimeout> | undefined
 let requestId = 0
 const hasMore = computed(() => posts.value.length < total.value)
 async function load({ append = false } = {}) {
@@ -31,7 +32,7 @@ async function load({ append = false } = {}) {
   if (selected.value) q.set('tag', selected.value)
   if (search.value.trim()) q.set('q', search.value.trim())
   try {
-    const result = await getPublicData(`/api/v1/articles?${q}`)
+    const result = await getPublicData<PageResult<ArticleSummary>>(`/api/v1/articles?${q}`)
     if (currentRequest !== requestId) return
     posts.value = append ? [...posts.value, ...(result.items || [])] : result.items || []
     page.value = targetPage
@@ -44,7 +45,7 @@ async function load({ append = false } = {}) {
     if (currentRequest === requestId) loading.value = false
   }
 }
-function select(name) {
+function select(name: string) {
   selected.value = selected.value === name ? '' : name
   page.value = 1
   router.replace({
@@ -91,7 +92,7 @@ watch(
 onMounted(async () => {
   load()
   try {
-    tags.value = await getPublicData('/api/v1/tags')
+    tags.value = await getPublicData<PublicTag[]>('/api/v1/tags')
   } catch {}
 })
 onBeforeUnmount(() => {
@@ -101,13 +102,13 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="page-head">
-    <div class="container article-list-container">
+    <div class="page-container article-list-container">
       <h1>{{ t('web.articles') }}</h1>
       <p class="sub">{{ t('web.articlesIntro') }}</p>
     </div>
   </section>
   <section class="section">
-    <div class="container article-list-container">
+    <div class="page-container article-list-container">
       <label class="search-box"
         ><span class="search-icon" aria-hidden="true">⌕</span
         ><input
@@ -140,7 +141,7 @@ onBeforeUnmount(() => {
       <div v-if="loading" class="post-list"><PostCardSkeleton v-for="i in 4" :key="i" /></div>
       <div v-else-if="error" role="alert">
         <p>{{ error }}</p>
-        <button class="btn" @click="load">{{ t('web.retry') }}</button>
+        <button class="btn" @click="load()">{{ t('web.retry') }}</button>
       </div>
       <div v-else-if="posts.length" class="post-list">
         <PostCard v-for="post in posts" :key="post.id" :post="post" />

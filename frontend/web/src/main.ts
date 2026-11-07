@@ -1,14 +1,13 @@
 import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
-import { i18n } from '../../shared/i18n.js'
+import { i18n } from '../../shared/i18n'
 import HomeView from './views/HomeView.vue'
 import ArticlesView from './views/ArticlesView.vue'
 import PostView from './views/PostView.vue'
 import AboutView from './views/AboutView.vue'
 import FriendsView from './views/FriendsView.vue'
-import './styles/original.css'
-import './styles/reconstruction.css'
+import './styles/tailwind.css'
 
 const router = createRouter({
   history: createWebHistory(),

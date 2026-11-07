@@ -1,0 +1,552 @@
+@import 'tailwindcss';
+@import '../../../shared/theme.css';
+@import '../../../shared/typography.css';
+
+@layer components {
+  .nav-inner {
+    @apply max-w-[1080px];
+  }
+  .nav-tabs {
+    @apply flex min-w-0 flex-[0_1_auto] items-center justify-end gap-1 overflow-x-auto [scrollbar-width:none];
+  }
+  .nav-tabs::-webkit-scrollbar {
+    @apply hidden;
+  }
+  .nav-tab {
+    @apply rounded-full px-3.5 py-1.5 text-[13.5px] font-medium whitespace-nowrap text-muted no-underline transition-colors;
+  }
+  .nav-tab:hover {
+    @apply bg-hover text-ink;
+  }
+  .nav-tab.active {
+    @apply bg-accent text-white;
+  }
+  .nav-actions {
+    @apply min-w-[120px] justify-end;
+  }
+  .nav .link-btn {
+    @apply whitespace-nowrap;
+  }
+  .admin-main {
+    @apply mx-auto max-w-[1040px] px-6 pt-[calc(var(--nav-h)+36px)] pb-[72px];
+  }
+  .list-head {
+    @apply mb-[22px] flex flex-wrap items-center justify-between gap-4;
+  }
+  .list-head h1 {
+    @apply text-[clamp(26px,4vw,32px)] font-bold tracking-[-0.03em];
+  }
+  .head-actions,
+  .inline-form,
+  .form-actions {
+    @apply flex items-center gap-2.5;
+  }
+  .btn {
+    @apply px-[22px] py-2.5 text-[14.5px];
+  }
+  .btn-sm {
+    @apply px-[18px] py-2 text-[13.5px];
+  }
+  .btn-danger {
+    @apply bg-[#ff3b30] text-white;
+  }
+  .btn-danger:hover {
+    @apply bg-[#e0342b];
+    box-shadow: 0 6px 18px #ff3b3047;
+  }
+  :root[data-theme='dark'] .btn-danger {
+    @apply bg-[#ff453a];
+  }
+  :root[data-theme='dark'] .btn-danger:hover {
+    @apply bg-[#e63c30];
+  }
+  .link-btn {
+    @apply rounded-full border-0 bg-transparent px-3 py-1.5 text-sm font-medium text-[var(--link)] transition-colors hover:bg-hover;
+  }
+  .link-btn.danger {
+    @apply text-[#ff3b30];
+  }
+  :root[data-theme='dark'] .link-btn.danger {
+    @apply text-[#ff453a];
+  }
+  .stack {
+    @apply flex flex-col gap-3;
+  }
+  .admin-row {
+    @apply flex items-center gap-4 transition duration-200;
+  }
+  .admin-row:hover {
+    @apply border-line-strong shadow-raised;
+    transform: translateY(-1px);
+  }
+  .row-check {
+    @apply grid flex-none place-items-center;
+  }
+  .row-main {
+    @apply min-w-0 flex-1;
+  }
+  .row-title {
+    @apply flex flex-wrap items-center gap-2.5;
+  }
+  .row-title h3 {
+    @apply text-[16.5px] leading-[1.4] font-[650] tracking-[-0.01em];
+  }
+  .row-meta {
+    @apply mt-1.5 flex min-w-0 flex-wrap items-center gap-2 text-[12.5px] text-muted;
+  }
+  .slug {
+    @apply min-w-0 rounded-md bg-hover px-2 py-0.5 font-mono text-xs text-subtle [overflow-wrap:anywhere];
+  }
+  .tag {
+    @apply py-0.5;
+  }
+  .tag-list {
+    @apply mt-2 flex flex-wrap gap-1.5;
+  }
+  .tag-list .tag {
+    @apply m-0;
+  }
+  .row-actions {
+    @apply flex flex-none items-center gap-0.5;
+  }
+  .batch-bar {
+    @apply mt-4 flex flex-wrap items-center gap-3;
+  }
+  .count {
+    @apply text-sm font-medium text-subtle;
+  }
+  .status-pill {
+    @apply rounded-full bg-hover px-[9px] py-0.5 text-xs whitespace-nowrap text-muted;
+  }
+  .status-pill.published {
+    @apply bg-[#22a06b20] text-[#168455];
+  }
+  :root[data-theme='dark'] .status-pill.published {
+    @apply text-[#4ade9a];
+  }
+  .toolbar {
+    @apply mb-[18px] flex flex-wrap items-center justify-between gap-3.5;
+  }
+  .pills {
+    @apply flex flex-wrap gap-2;
+  }
+  .pill {
+    @apply inline-flex items-center rounded-full border border-line bg-surface px-4 py-[7px] text-[13.5px] font-medium text-muted transition-colors;
+  }
+  .pill:hover {
+    @apply border-line-strong text-ink;
+  }
+  .pill.active {
+    @apply border-transparent bg-accent text-white;
+  }
+  .search-box {
+    @apply flex min-w-[200px] max-w-[320px] flex-1 items-center gap-2.5 rounded-full border border-line bg-surface px-4 py-[9px] transition;
+  }
+  .search-box:focus-within {
+    @apply border-accent;
+    box-shadow: 0 0 0 4px #0071e31f;
+  }
+  .search-box input {
+    @apply min-w-0 flex-1 border-0 bg-transparent text-sm text-ink outline-none placeholder:text-subtle;
+  }
+  .search-box svg {
+    @apply size-4 flex-none text-subtle;
+  }
+  .sort-control {
+    @apply flex items-center gap-2 text-[13px] whitespace-nowrap text-muted;
+  }
+  .sort-control select {
+    @apply rounded-[9px] border border-line-strong bg-surface px-[9px] py-[7px] text-ink;
+  }
+  .pager {
+    @apply mt-6 flex items-center justify-center gap-4;
+  }
+  .pager-info {
+    @apply text-[13px] text-muted;
+  }
+  .field {
+    @apply mb-4 flex flex-col gap-2;
+  }
+  .field:last-child {
+    @apply mb-0;
+  }
+  .field label {
+    @apply flex items-baseline justify-between gap-3 text-[13px] font-semibold text-muted;
+  }
+  .field-counter,
+  .field-hint-inline {
+    @apply text-xs font-normal text-subtle;
+  }
+  .field input:not([type='radio']),
+  .field textarea,
+  .chip-input {
+    @apply w-full rounded-xl border border-line-strong bg-transparent px-3.5 py-2.5 text-[15px] text-ink outline-none transition placeholder:text-subtle;
+  }
+  .field input:focus,
+  .field textarea:focus,
+  .chip-input:focus {
+    @apply border-accent;
+    box-shadow: 0 0 0 4px #0071e31f;
+  }
+  .field input:focus-visible,
+  .field textarea:focus-visible,
+  .chip-input:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--accent) 38%, transparent);
+    outline-offset: 2px;
+  }
+  .field textarea {
+    @apply resize-y leading-[1.65];
+  }
+  .field-row {
+    @apply grid grid-cols-2 gap-4;
+  }
+  .form-card,
+  .section-card {
+    @apply px-[clamp(20px,4vw,30px)] py-[26px];
+  }
+  .form-title,
+  .section-title {
+    @apply mb-3.5 text-base font-[650] tracking-[-0.01em];
+  }
+  .section-hint {
+    @apply -mt-1.5 mb-3.5 text-[13px] text-muted;
+  }
+  .field-hint {
+    @apply mt-1.5 text-[12.5px] text-subtle;
+  }
+  .page-intro {
+    @apply -mt-2.5 mb-[18px] text-sm text-muted;
+  }
+  .chips {
+    @apply mb-3 flex flex-wrap gap-2;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1.5 text-[13px] font-semibold text-accent;
+  }
+  .chip-remove {
+    @apply -my-1 -mr-1.5 -ml-0.5 border-0 bg-transparent px-1.5 py-1 text-[15px] leading-none text-inherit;
+  }
+  .chip-editor {
+    @apply flex flex-wrap items-center gap-2.5;
+  }
+  .chip-input {
+    @apply min-w-[180px] flex-1 py-[9px] text-sm;
+  }
+  .inline-form .chip-input {
+    @apply min-w-0;
+  }
+  .tag-suggestions {
+    @apply mt-2.5 flex flex-wrap gap-1.5;
+  }
+  .tag-suggestion {
+    @apply rounded-full border-0 bg-hover px-2.5 py-[3px] text-[12.5px] text-muted transition-colors hover:bg-accent-soft hover:text-accent;
+  }
+  .tag-unused {
+    @apply bg-hover text-subtle;
+  }
+  .tag-form,
+  .friend-form {
+    @apply mb-[18px];
+  }
+  .avatar {
+    @apply size-11 flex-none rounded-xl bg-hover object-cover;
+  }
+  .avatar-fallback {
+    @apply inline-flex items-center justify-center text-[17px] font-[650] text-white;
+    background-image: linear-gradient(135deg, #0a84ff, #64d2ff);
+  }
+  .sort-input {
+    @apply max-w-40;
+  }
+  .timeline-row {
+    @apply grid grid-cols-[100px_1fr_2fr_auto] items-end gap-3 rounded-[14px] border border-line px-0 py-3;
+  }
+  .add-timeline {
+    @apply mt-3.5;
+  }
+  .account-form {
+    @apply max-w-[560px];
+  }
+  .account-form .btn {
+    @apply mt-1;
+  }
+  .status-field {
+    @apply mb-4 block min-w-0 border-0 p-0;
+  }
+  .status-field legend {
+    @apply mb-2 text-[13px] font-semibold text-muted;
+  }
+  .radio-pills {
+    @apply flex flex-wrap gap-2.5;
+  }
+  .status-field .radio-pills label {
+    @apply relative block cursor-pointer text-sm font-medium text-ink;
+  }
+  .radio-pills input {
+    @apply pointer-events-none absolute size-px opacity-0;
+  }
+  .radio-pills span {
+    @apply inline-flex min-w-[84px] items-center justify-center rounded-full border border-line-strong bg-surface px-5 py-[7px] text-sm font-medium text-muted transition;
+  }
+  .radio-pills input:checked + span {
+    @apply border-transparent bg-accent text-white;
+  }
+  .radio-pills input:focus-visible + span {
+    outline: 3px solid color-mix(in srgb, var(--accent) 38%, transparent);
+    outline-offset: 2px;
+  }
+  .radio-pills label:hover span {
+    @apply border-accent text-accent;
+  }
+  .radio-pills input:checked + span:hover {
+    @apply text-white;
+  }
+  .editor-form {
+    @apply flex flex-col gap-5;
+  }
+  .editor-grid {
+    @apply mt-[18px] grid grid-cols-2 items-start gap-[18px];
+  }
+  .editor-pane {
+    @apply mb-0 flex min-w-0 flex-col gap-2;
+  }
+  .editor-pane textarea,
+  .editor-pane .md-preview {
+    @apply flex-1;
+  }
+  .editor-pane .markdown-input {
+    @apply h-[480px] min-h-[320px] flex-none resize-y overflow-auto font-mono text-[13.5px] leading-[1.65] [tab-size:2];
+  }
+  .preview-scroll {
+    @apply max-h-[720px] min-h-[480px] overflow-y-auto;
+  }
+  .md-preview {
+    @apply min-h-[300px] overflow-auto p-[18px] text-[15px] leading-[1.8] [overflow-wrap:anywhere];
+  }
+  .md-preview :is(h1, h2, h3) {
+    @apply mt-[1em] mb-[0.5em];
+  }
+  .md-preview > :first-child {
+    @apply mt-0;
+  }
+  .editor-save-state {
+    @apply mt-1 text-xs text-subtle;
+  }
+  .error-card {
+    @apply text-[#b42318];
+  }
+  .login-wrap {
+    @apply flex min-h-screen items-center justify-center p-6;
+  }
+  .login-card {
+    @apply w-full max-w-[380px] rounded-[22px] border border-line bg-[var(--nav-bg)] px-[34px] py-[38px] text-center shadow-raised;
+    backdrop-filter: saturate(180%) blur(20px);
+  }
+  .login-card h1 {
+    @apply mb-1.5 text-2xl font-bold tracking-[-0.02em];
+  }
+  .login-card .field {
+    @apply mb-3.5 text-left;
+  }
+  .login-error {
+    @apply mb-3.5 rounded-[10px] bg-[#ff3b301a] px-3 py-[9px] text-left text-[13px] font-medium text-[#ff3b30];
+  }
+  :root[data-theme='dark'] .login-error {
+    @apply text-[#ff453a];
+  }
+  .login-btn {
+    @apply mt-1.5 w-full justify-center px-[22px] py-3 text-[15px];
+  }
+  .toast-host {
+    @apply pointer-events-none fixed right-6 bottom-6 z-[3000] grid w-[min(380px,calc(100vw-32px))] gap-2.5;
+  }
+  .toast {
+    @apply pointer-events-auto flex min-w-0 items-start gap-2.5 rounded-[14px] border border-line bg-surface px-3.5 py-[13px] text-center text-sm font-medium whitespace-normal text-ink shadow-raised [overflow-wrap:anywhere];
+    animation: toast-in 0.24s ease-out;
+    backdrop-filter: saturate(180%) blur(20px);
+  }
+  .toast.success {
+    border-color: color-mix(in srgb, #168455 45%, var(--border));
+  }
+  .toast.error {
+    border-color: color-mix(in srgb, #b42318 45%, var(--border));
+  }
+  .toast.info {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  }
+  .toast-icon {
+    @apply grid size-[22px] flex-none place-items-center rounded-full bg-accent-soft text-[13px] font-bold text-accent;
+  }
+  .toast-message {
+    @apply flex-1 leading-normal;
+  }
+  .toast-close {
+    @apply flex-none border-0 bg-transparent text-xl leading-none text-subtle hover:text-ink;
+  }
+  .confirm-backdrop {
+    @apply fixed inset-0 z-[3500] flex items-end justify-center bg-[#0008] p-5 backdrop-blur-[6px];
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+  .confirm-dialog {
+    @apply m-0 w-[min(420px,100%)] rounded-[18px] border border-line bg-surface p-[26px] text-ink shadow-raised;
+  }
+  .confirm-dialog h2 {
+    @apply mb-2.5 text-xl font-bold;
+  }
+  .confirm-dialog p {
+    @apply m-0 leading-[1.7] text-muted;
+  }
+  .confirm-actions {
+    @apply mt-6 flex justify-end gap-2.5;
+  }
+  .toast-enter-active,
+  .toast-leave-active {
+    @apply transition duration-300;
+  }
+  .toast-enter-from,
+  .toast-leave-to {
+    @apply opacity-0;
+    transform: translateY(-10px);
+  }
+  .skeleton {
+    @apply rounded-[10px];
+    background: linear-gradient(90deg, var(--hover-bg) 25%, var(--border) 37%, var(--hover-bg) 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.3s infinite;
+  }
+  .sk-title {
+    @apply h-[18px] w-[55%];
+  }
+  .sk-meta {
+    @apply h-[13px] w-[35%];
+  }
+  .sk-line {
+    @apply h-4 w-[70%];
+  }
+  .sk-line.short {
+    @apply w-[40%];
+  }
+  .sk-avatar {
+    @apply size-11 flex-none rounded-xl;
+  }
+  .editor-loading {
+    @apply flex flex-col gap-3 pt-2;
+  }
+  @media (width <= 900px) {
+    .preview-scroll {
+      @apply max-h-[480px] min-h-[280px];
+    }
+  }
+  @media (width <= 860px) {
+    .editor-grid,
+    .timeline-row {
+      @apply grid-cols-1;
+    }
+    .md-preview {
+      @apply min-h-[240px];
+    }
+  }
+  @media (width <= 720px) {
+    .admin-main {
+      @apply px-5 pt-[calc(var(--nav-h)+26px)] pb-14;
+    }
+    .toolbar {
+      @apply flex-col items-stretch;
+    }
+    .search-box {
+      @apply max-w-none;
+    }
+    .field-row {
+      @apply grid-cols-1;
+    }
+  }
+  @media (width <= 640px) {
+    .admin-main {
+      @apply px-[18px] pb-12;
+    }
+    .admin-row {
+      @apply flex-wrap items-start;
+    }
+    .admin-row .row-actions {
+      @apply ml-auto;
+    }
+    .nav-inner {
+      @apply gap-2 px-4;
+    }
+    .nav-tabs {
+      @apply flex-auto justify-start;
+    }
+    .nav-tab {
+      @apply px-2.5 text-xs;
+    }
+    .nav-actions {
+      @apply ml-auto min-w-0;
+    }
+    .link-btn {
+      @apply px-2;
+    }
+    .pager {
+      @apply flex-wrap gap-2.5;
+    }
+    .field-row {
+      @apply gap-0;
+    }
+    .editor-form {
+      @apply gap-3.5;
+    }
+    .form-card,
+    .section-card {
+      @apply p-5;
+    }
+  }
+  @media (width <= 560px) {
+    .avatar,
+    .sk-avatar {
+      @apply hidden;
+    }
+    .row-actions {
+      @apply flex-wrap self-end;
+    }
+    .timeline-row {
+      @apply flex-col;
+    }
+    .login-card input,
+    .search-box input,
+    .admin-main input:not([type='radio']):not([type='checkbox']):not([type='file']),
+    .admin-main textarea,
+    .admin-main select,
+    .admin-main .chip-editor .chip-input {
+      @apply text-base;
+    }
+  }
+  @media (width <= 400px) {
+    .admin-main {
+      @apply pt-[calc(var(--nav-h)+22px)];
+    }
+    .list-head h1 {
+      @apply text-2xl;
+    }
+    .login-card {
+      @apply px-6 py-[30px];
+    }
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}

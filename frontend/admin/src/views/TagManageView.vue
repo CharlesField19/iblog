@@ -1,15 +1,17 @@
-<script setup>
-import { errorMessage } from '../../../shared/i18n.js'
-import { inject, onMounted, ref } from 'vue'
+<script setup lang="ts">
+import { errorMessage } from '../../../shared/i18n'
+import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { adminRequest } from '../api.js'
+import { adminRequest } from '../api'
+import type { Tag } from '../../../shared/contracts'
+import { useToast, useConfirm } from '../injections'
 
-const toast = inject('toast')
-const confirmAction = inject('confirmAction')
+const toast = useToast()
+const confirmAction = useConfirm()
 const { t } = useI18n()
-const items = ref([])
+const items = ref<Tag[]>([])
 const name = ref('')
-const editId = ref(null)
+const editId = ref<number | null>(null)
 const editName = ref('')
 const loading = ref(false)
 const error = ref('')
@@ -17,7 +19,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    items.value = (await adminRequest('/api/v1/admin/tags')).items || []
+    items.value = (await adminRequest<{ items: Tag[] }>('/api/v1/admin/tags')).items || []
   } catch (e) {
     error.value = errorMessage(e)
   } finally {
@@ -39,7 +41,7 @@ async function create() {
     toast('error', errorMessage(e))
   }
 }
-function startEdit(item) {
+function startEdit(item: Tag) {
   editId.value = item.id
   editName.value = item.name
 }
@@ -69,7 +71,7 @@ async function saveEdit() {
     toast('error', errorMessage(e))
   }
 }
-async function remove(item) {
+async function remove(item: Tag) {
   if (
     !(await confirmAction(
       item.count

@@ -1,17 +1,18 @@
-<script setup>
-import { errorMessage } from '../../../shared/i18n.js'
-import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+<script setup lang="ts">
+import { errorMessage } from '../../../shared/i18n'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { onBeforeRouteLeave } from 'vue-router'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
-import { adminRequest } from '../api.js'
+import { adminRequest } from '../api'
+import { useToast, useConfirm } from '../injections'
+import { ApiError } from '../../../shared/api'
+import type { Tag, ArticleDetail } from '../../../shared/contracts'
 
 const route = useRoute()
 const router = useRouter()
-const toast = inject('toast')
-const confirmAction = inject('confirmAction')
+const toast = useToast()
+const confirmAction = useConfirm()
 const { t } = useI18n()
 const id = route.params.id
 const title = ref('')
@@ -19,9 +20,9 @@ const slug = ref('')
 const summary = ref('')
 const content = ref('')
 const status = ref('draft')
-const tags = ref([])
+const tags = ref<string[]>([])
 const tagInput = ref('')
-const knownTags = ref([])
+const knownTags = ref<string[]>([])
 const loading = ref(Boolean(id))
 const saving = ref(false)
 const error = ref('')
@@ -29,8 +30,10 @@ const initialSlug = ref('')
 const initialStatus = ref('draft')
 const lastSavedAt = ref('')
 const previewHtml = ref('')
-let previewTimer
-let draftTimer
+let previewTimer: ReturnType<typeof setTimeout> | undefined
+let draftTimer: ReturnType<typeof setTimeout> | undefined
+let previewVersion = 0
+let previewController: AbortController | undefined
 const draftKey = `iblog-editor-draft-${id || 'new'}`
 const snapshot = () =>
   JSON.stringify({
@@ -72,22 +75,41 @@ function addTag(value = tagInput.value) {
 }
 function restoreDraft() {
   try {
-    const saved = JSON.parse(localStorage.getItem(draftKey) || 'null')
-    if (saved) {
-      title.value = saved.title || ''
-      slug.value = saved.slug || ''
-      summary.value = saved.summary || ''
-      content.value = saved.content || ''
-      status.value = saved.status || 'draft'
-      tags.value = Array.isArray(saved.tags) ? saved.tags : []
+    const saved: unknown = JSON.parse(localStorage.getItem(draftKey) || 'null')
+    if (saved && typeof saved === 'object') {
+      const draft = saved as Record<string, unknown>
+      title.value = typeof draft.title === 'string' ? draft.title : ''
+      slug.value = typeof draft.slug === 'string' ? draft.slug : ''
+      summary.value = typeof draft.summary === 'string' ? draft.summary : ''
+      content.value = typeof draft.content === 'string' ? draft.content : ''
+      status.value = draft.status === 'published' ? 'published' : 'draft'
+      tags.value = Array.isArray(draft.tags)
+        ? draft.tags.filter((tag): tag is string => typeof tag === 'string')
+        : []
       toast('info', t('admin.editor.draftAuto'))
     }
   } catch {}
 }
 function updatePreview() {
   clearTimeout(previewTimer)
-  previewTimer = setTimeout(() => {
-    previewHtml.value = DOMPurify.sanitize(marked.parse(content.value || ''))
+  const version = ++previewVersion
+  previewController?.abort()
+  previewTimer = setTimeout(async () => {
+    const controller = new AbortController()
+    previewController = controller
+    try {
+      const result = await adminRequest<{ html: string }>('/api/v1/admin/markdown/preview', {
+        method: 'POST',
+        body: { contentMd: content.value || '' },
+        signal: controller.signal,
+      })
+      if (version === previewVersion) previewHtml.value = result.html
+    } catch (error) {
+      if (version === previewVersion && !controller.signal.aborted) {
+        previewHtml.value = ''
+        toast('error', errorMessage(error))
+      }
+    }
   }, 180)
 }
 function persistDraft() {
@@ -106,11 +128,13 @@ function scheduleDraftPersist() {
 }
 async function init() {
   try {
-    knownTags.value = (await adminRequest('/api/v1/admin/tags')).items.map((x) => x.name)
+    knownTags.value = (await adminRequest<{ items: Tag[] }>('/api/v1/admin/tags')).items.map(
+      (x) => x.name,
+    )
   } catch {}
   if (id) {
     try {
-      const a = await adminRequest(`/api/v1/admin/articles/${id}`)
+      const a = await adminRequest<ArticleDetail>(`/api/v1/admin/articles/${id}`)
       title.value = a.title
       slug.value = a.slug
       summary.value = a.summary
@@ -179,8 +203,8 @@ async function save() {
       ...(slug.value.trim() ? { slug: slug.value.trim() } : {}),
     }
     const saved = id
-      ? await adminRequest(`/api/v1/admin/articles/${id}`, { method: 'PUT', body })
-      : await adminRequest('/api/v1/admin/articles', { method: 'POST', body })
+      ? await adminRequest<ArticleDetail>(`/api/v1/admin/articles/${id}`, { method: 'PUT', body })
+      : await adminRequest<ArticleDetail>('/api/v1/admin/articles', { method: 'POST', body })
     if (!id) {
       initialSlug.value = saved.slug
     }
@@ -193,7 +217,12 @@ async function save() {
     )
     router.push('/')
   } catch (e) {
-    toast('error', e.code === 'network' ? t('admin.editor.networkDraft') : errorMessage(e))
+    toast(
+      'error',
+      e instanceof ApiError && e.code === 'network'
+        ? t('admin.editor.networkDraft')
+        : errorMessage(e),
+    )
   } finally {
     saving.value = false
   }
@@ -206,7 +235,7 @@ onBeforeRouteLeave(async () => {
     return await confirmAction(t('admin.editor.leave'), t('admin.editor.confirmLeave'))
   }
 })
-function beforeUnload(event) {
+function beforeUnload(event: BeforeUnloadEvent) {
   if (dirty.value) {
     persistDraft()
     event.preventDefault()
@@ -221,6 +250,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', beforeUnload)
   clearTimeout(previewTimer)
   clearTimeout(draftTimer)
+  ++previewVersion
+  previewController?.abort()
 })
 </script>
 
@@ -305,7 +336,7 @@ onBeforeUnmount(() => {
               name="tags"
               :placeholder="t('admin.editor.addTag')"
               autocomplete="off"
-              @keydown.enter.prevent="addTag"
+              @keydown.enter.prevent="addTag()"
             /><button class="btn btn-secondary btn-sm" type="button" @click="addTag()">
               {{ t('admin.editor.addTag') }}
             </button>

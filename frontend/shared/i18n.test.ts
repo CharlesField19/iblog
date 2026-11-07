@@ -1,19 +1,31 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
 
-const storage = new Map()
-globalThis.localStorage = {
-  getItem: (key) => storage.get(key) ?? null,
-  setItem: (key, value) => storage.set(key, String(value)),
-}
-delete globalThis.document
+const storage = new Map<string, string>()
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  value: {
+    get length() {
+      return storage.size
+    },
+    clear: () => storage.clear(),
+    key: (index: number) => [...storage.keys()][index] ?? null,
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => storage.set(key, String(value)),
+    removeItem: (key: string) => storage.delete(key),
+  },
+})
+Object.defineProperty(globalThis, 'document', { configurable: true, value: undefined })
 Object.defineProperty(globalThis, 'navigator', {
   configurable: true,
   value: { language: 'zh-CN' },
 })
 
-const { i18n, setLocale, toggleLocale, errorMessage } = await import('./i18n.js')
-globalThis.document = { documentElement: { lang: '' } }
+const { i18n, setLocale, toggleLocale, errorMessage } = await import('./i18n')
+Object.defineProperty(globalThis, 'document', {
+  configurable: true,
+  value: { documentElement: { lang: '' } },
+})
 
 test('locale selection is persisted and updates document language', () => {
   setLocale('en-US')
@@ -39,6 +51,6 @@ test('API errors resolve to the active locale with a safe fallback', () => {
 })
 
 after(() => {
-  delete globalThis.localStorage
-  delete globalThis.document
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: undefined })
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: undefined })
 })

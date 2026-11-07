@@ -1,28 +1,34 @@
-<script setup>
-import { errorMessage } from '../../../shared/i18n.js'
-import { computed, inject, onMounted, ref, watch } from 'vue'
+<script setup lang="ts">
+import { errorMessage } from '../../../shared/i18n'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
-import { adminRequest } from '../api.js'
+import { adminRequest } from '../api'
+import type { ArticleSummary, Tag, PageResult } from '../../../shared/contracts'
+import { useToast, useConfirm } from '../injections'
 
-const toast = inject('toast')
+const toast = useToast()
 const { t, locale } = useI18n()
-const confirmAction = inject('confirmAction')
-const items = ref([])
+const confirmAction = useConfirm()
+const items = ref<ArticleSummary[]>([])
 const total = ref(0)
 const page = ref(1)
 const status = ref('')
 const tag = ref('')
-const tags = ref([])
+const tags = ref<Tag[]>([])
 const search = ref('')
 const query = ref('')
 const sort = ref('updated')
 const loading = ref(false)
 const error = ref('')
-const selected = ref([])
+const selected = ref<number[]>([])
+function togglePageSelection(event: Event) {
+  const checked = (event.target as HTMLInputElement).checked
+  selected.value = checked ? items.value.map((item) => item.id) : []
+}
 const pageSize = 10
 const pages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
-let timer
+let timer: ReturnType<typeof setTimeout> | undefined
 async function load() {
   loading.value = true
   error.value = ''
@@ -35,7 +41,7 @@ async function load() {
   if (tag.value) p.set('tag', tag.value)
   if (query.value) p.set('q', query.value)
   try {
-    const d = await adminRequest(`/api/v1/admin/articles?${p}`)
+    const d = await adminRequest<PageResult<ArticleSummary>>(`/api/v1/admin/articles?${p}`)
     items.value = d.items || []
     total.value = d.total || 0
     selected.value = []
@@ -57,10 +63,10 @@ watch(search, () => {
 onMounted(load)
 onMounted(async () => {
   try {
-    tags.value = (await adminRequest('/api/v1/admin/tags')).items || []
+    tags.value = (await adminRequest<{ items: Tag[] }>('/api/v1/admin/tags')).items || []
   } catch {}
 })
-async function remove(post) {
+async function remove(post: ArticleSummary) {
   if (
     !(await confirmAction(
       t('admin.dashboard.deleteConfirm', { title: post.title }),
@@ -77,7 +83,7 @@ async function remove(post) {
     toast('error', errorMessage(e))
   }
 }
-async function batch(action) {
+async function batch(action: 'publish' | 'archive' | 'delete') {
   if (!selected.value.length) return
   if (
     action === 'delete' &&
@@ -108,11 +114,11 @@ async function batch(action) {
     toast('error', errorMessage(e))
   }
 }
-function setStatus(value) {
+function setStatus(value: string) {
   status.value = value
   page.value = 1
 }
-function formatDate(s) {
+function formatDate(s: string) {
   return s
     ? new Intl.DateTimeFormat(locale.value, {
         year: 'numeric',
@@ -208,7 +214,7 @@ function formatDate(s) {
             ><time :datetime="post.updatedAt">{{ formatDate(post.updatedAt) }}</time
             ><span>{{
               t('admin.dashboard.viewCount', {
-                count: new Intl.NumberFormat(locale.value).format(post.views),
+                count: new Intl.NumberFormat(locale).format(post.views),
               })
             }}</span>
           </p>
@@ -231,7 +237,7 @@ function formatDate(s) {
         ><input
           type="checkbox"
           :checked="items.length > 0 && selected.length === items.length"
-          @change="selected = $event.target.checked ? items.map((item) => item.id) : []"
+          @change="togglePageSelection"
         />
         {{ t('admin.dashboard.selectPage') }}</label
       ><span>{{ t('admin.dashboard.selected', { count: selected.length }) }}</span

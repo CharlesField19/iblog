@@ -1,9 +1,10 @@
-<script setup>
+<script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { getPublicData } from '../../../shared/publicData.js'
+import { getPublicData } from '../../../shared/publicData'
+import type { AboutData, PublicSettings } from '../../../shared/contracts'
 
-const about = ref({
+const about = ref<AboutData>({
   intro: '',
   bio: '',
   skills: [],
@@ -11,7 +12,7 @@ const about = ref({
   contactNote: '',
 })
 const { t } = useI18n()
-const contacts = ref({})
+const contacts = ref<Record<string, string>>({})
 const contactStatus = ref('')
 const loading = ref(false)
 const defaultAbout = () => ({
@@ -54,7 +55,7 @@ const social = [
     icon: '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
   },
 ]
-function safeExternalUrl(value, key) {
+function safeExternalUrl(value: string, key: string) {
   const text = String(value || '').trim()
   if (!text) return ''
   const handle = text.replace(/^@/, '')
@@ -89,7 +90,7 @@ onMounted(async () => {
   about.value = defaultAbout()
   contacts.value = defaultContacts
   try {
-    const settings = await getPublicData('/api/v1/settings')
+    const settings = await getPublicData<PublicSettings>('/api/v1/settings')
     about.value = { ...about.value, ...(settings.about || {}) }
     contacts.value = { ...defaultContacts, ...(settings.contacts || {}) }
   } catch {
@@ -102,13 +103,13 @@ onMounted(async () => {
 
 <template>
   <section class="page-head">
-    <div class="container">
+    <div class="page-container">
       <h1>{{ t('web.about') }}</h1>
       <p class="sub">{{ about.intro || t('web.aboutDefaultIntro') }}</p>
     </div>
   </section>
   <section class="section">
-    <div class="container about-grid">
+    <div class="page-container about-grid">
       <div class="card">
         <h2 class="section-title">{{ t('web.whoAmI') }}</h2>
         <p class="about-bio">{{ about.bio || t('web.aboutDefaultBio') }}</p>
@@ -135,7 +136,7 @@ onMounted(async () => {
     </div>
   </section>
   <section class="section">
-    <div class="container">
+    <div class="page-container">
       <div class="card contact-card">
         <h2 class="section-title">{{ t('web.contact') }}</h2>
         <p>{{ about.contactNote || t('web.aboutDefaultContact') }}</p>

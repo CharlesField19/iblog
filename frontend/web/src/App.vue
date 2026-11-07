@@ -1,9 +1,10 @@
-<script setup>
+<script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { i18n, toggleLocale } from '../../shared/i18n.js'
-import { getPublicData } from '../../shared/publicData.js'
+import { i18n, toggleLocale } from '../../shared/i18n'
+import { getPublicData } from '../../shared/publicData'
+import type { PublicSettings } from '../../shared/contracts'
 
 const route = useRoute()
 const theme = ref(localStorage.getItem('iblog-theme-mode') || 'auto')
@@ -20,7 +21,7 @@ const links = computed(() => [
   { to: '/friends', label: t('web.friends') },
   { to: '/about', label: t('web.about') },
 ])
-function prefetchRoute(path) {
+function prefetchRoute(path: string) {
   if (path === '/articles') {
     void getPublicData('/api/v1/articles?page=1&pageSize=12').catch(() => {})
     void getPublicData('/api/v1/tags').catch(() => {})
@@ -30,7 +31,7 @@ function prefetchRoute(path) {
     void getPublicData('/api/v1/settings').catch(() => {})
   }
 }
-const pageMeta = computed(() => ({
+const pageMeta = computed<Record<string, [string, string]>>(() => ({
   '/': ['iBlog · Code · Life · Ideas', t('web.articlesIntro')],
   '/articles': [`${t('web.articles')} · iBlog`, t('web.articlesIntro')],
   '/about': [`${t('web.about')} · iBlog`, t('web.aboutBlog')],
@@ -40,23 +41,23 @@ function applyRouteMeta(path = route.path) {
   if (path.startsWith('/articles/')) return
   const [title, description] = pageMeta.value[path] || pageMeta.value['/']
   document.title = title
-  let meta = document.head.querySelector('meta[name="description"]')
+  let meta = document.head.querySelector<HTMLMetaElement>('meta[name="description"]')
   if (!meta) {
     meta = document.createElement('meta')
     meta.name = 'description'
     document.head.appendChild(meta)
   }
   meta.content = description
-  let canonical = document.head.querySelector('link[rel="canonical"]')
+  let canonical = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]')
   if (!canonical) {
     canonical = document.createElement('link')
     canonical.rel = 'canonical'
     document.head.appendChild(canonical)
   }
   canonical.href = new URL(path, window.location.origin).href
-  const set = (key, value, property = false) => {
+  const set = (key: string, value: string, property = false) => {
     const selector = property ? `meta[property="${key}"]` : `meta[name="${key}"]`
-    let node = document.head.querySelector(selector)
+    let node = document.head.querySelector<HTMLMetaElement>(selector)
     if (!node) {
       node = document.createElement('meta')
       node.setAttribute(property ? 'property' : 'name', key)
@@ -84,7 +85,7 @@ function applyTheme() {
 function toggleTheme() {
   theme.value = effectiveDark.value ? 'light' : 'dark'
 }
-function syncSystemTheme(event) {
+function syncSystemTheme(event: MediaQueryListEvent) {
   systemPrefersDark.value = event.matches
 }
 watch([theme, systemPrefersDark], applyTheme, { immediate: true })
@@ -94,7 +95,7 @@ watch([() => route.path, () => i18n.global.locale.value], () => applyRouteMeta()
 onMounted(async () => {
   colorScheme.addEventListener('change', syncSystemTheme)
   try {
-    const settings = await getPublicData('/api/v1/settings')
+    const settings = await getPublicData<PublicSettings>('/api/v1/settings')
     site.value = { ...site.value, ...(settings.site || {}) }
   } catch {
     /* Keep the built-in footer copy when settings cannot be loaded. */
@@ -121,6 +122,19 @@ onBeforeUnmount(() => colorScheme.removeEventListener('change', syncSystemTheme)
           >
         </nav>
         <div class="nav-actions">
+          <button
+            class="language-toggle"
+            type="button"
+            :aria-label="$t('languageSwitch')"
+            :title="$t('languageSwitch')"
+            @click="toggleLocale"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M3 5h12M9 3v2m3 0c-1 5-4 8-8 10m1-7c1.5 3 4 5.5 7 7m1 5 4-10 4 10m-6.5-3h5"
+              />
+            </svg>
+          </button>
           <button
             class="theme-toggle"
             type="button"
@@ -160,19 +174,6 @@ onBeforeUnmount(() => colorScheme.removeEventListener('change', syncSystemTheme)
             >
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
             </svg>
-          </button>
-          <button
-            class="language-toggle"
-            type="button"
-            :aria-label="$t('languageSwitch')"
-            @click="toggleLocale"
-          >
-            <span
-              class="language-glyph"
-              :class="{ 'language-glyph--english': $t('language') === '中' }"
-              aria-hidden="true"
-              >{{ $t('language') === '中' ? 'E' : '中' }}</span
-            >
           </button>
         </div>
       </div>

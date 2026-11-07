@@ -1,2 +1,2 @@
 #!/bin/sh
-exec "$(dirname "$0")/backup-volume.sh" "$@"
+exec sh "$(dirname "$0")/backup-volume.sh" "$@"

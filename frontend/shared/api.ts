@@ -1,12 +1,24 @@
 export class ApiError extends Error {
-  constructor(status, code) {
+  status: number
+  code: string
+
+  constructor(status: number, code: string) {
     super(code)
     this.status = status
     this.code = code
   }
 }
 
-export async function request(path, { method = 'GET', body, token, signal } = {}) {
+export interface RequestOptions {
+  method?: string
+  body?: unknown
+  signal?: AbortSignal
+}
+
+export async function request<T = unknown>(
+  path: string,
+  { method = 'GET', body, signal }: RequestOptions = {},
+): Promise<T> {
   let response
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 15000)
@@ -20,25 +32,25 @@ export async function request(path, { method = 'GET', body, token, signal } = {}
       headers: {
         Accept: 'application/json',
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: controller.signal,
     })
   } catch (error) {
     const cancelled = signal?.aborted
+    const fetchError = error as Error
     throw new ApiError(
       0,
-      cancelled ? 'aborted' : error?.name === 'AbortError' ? 'timeout' : 'network',
+      cancelled ? 'aborted' : fetchError?.name === 'AbortError' ? 'timeout' : 'network',
     )
   } finally {
     clearTimeout(timeout)
     signal?.removeEventListener('abort', abortFromCaller)
   }
-  if (response.status === 204) return null
+  if (response.status === 204) return undefined as T
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
     throw new ApiError(response.status, payload?.error?.code || String(response.status))
   }
-  return payload
+  return payload as T
 }

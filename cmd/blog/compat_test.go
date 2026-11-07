@@ -2,11 +2,14 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHttpOnlySessionCookieAndLogout(t *testing.T) {
@@ -20,6 +23,13 @@ func TestHttpOnlySessionCookieAndLogout(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	cookies := w.Result().Cookies()
+	var loginResponse map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&loginResponse); err != nil {
+		t.Fatal(err)
+	}
+	if _, hasToken := loginResponse["token"]; hasToken {
+		t.Fatal("login response must not expose the bearer token; the HttpOnly cookie is the session")
+	}
 	if w.Code != 200 || len(cookies) == 0 || cookies[0].Name != sessionCookieName || !cookies[0].HttpOnly {
 		t.Fatalf("login cookie missing or not HttpOnly: status=%d cookies=%v", w.Code, w.Result().Cookies())
 	}
@@ -32,6 +42,8 @@ func TestHttpOnlySessionCookieAndLogout(t *testing.T) {
 		t.Fatalf("cookie authorization status=%d body=%s", w.Code, w.Body.String())
 	}
 	r = httptest.NewRequest("POST", "/api/v1/auth/logout", nil)
+	r.Header.Set("Origin", "http://example.com")
+	r.Host = "example.com"
 	r.AddCookie(cookie)
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, r)
@@ -44,6 +56,111 @@ func TestHttpOnlySessionCookieAndLogout(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != 401 {
 		t.Fatalf("revoked cookie status=%d", w.Code)
+	}
+}
+
+func TestCookieAuthenticatedMutationsRejectCrossSiteOrigin(t *testing.T) {
+	s := testServer(t)
+	h := s.routes()
+	if code, _ := call(t, h, "POST", "/api/v1/auth/setup", map[string]any{"username": "testadmin", "password": "test-password-123"}, ""); code != 201 {
+		t.Fatalf("setup status=%d", code)
+	}
+	login := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(`{"username":"testadmin","password":"test-password-123"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(login, req)
+	cookies := login.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("login did not set the session cookie")
+	}
+
+	for _, tc := range []struct {
+		name   string
+		origin string
+		want   int
+		path   string
+	}{
+		{name: "cross origin", origin: "https://attacker.example", want: 403},
+		{name: "cross-origin logout", origin: "https://attacker.example", want: 403, path: "/api/v1/auth/logout"},
+		{name: "missing origin", want: 403},
+		{name: "same-origin host login", origin: "http://example.com", want: 200, path: "/api/v1/auth/login"},
+		{name: "cross-origin first-run setup", origin: "https://attacker.example", want: 403, path: "/api/v1/auth/setup"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := tc.path
+			if path == "" {
+				path = "/api/v1/admin/articles"
+			}
+			body := `{} `
+			if path == "/api/v1/auth/login" {
+				body = `{"username":"testadmin","password":"test-password-123"}`
+			} else if path == "/api/v1/auth/setup" {
+				body = `{"username":"newadmin","password":"test-password-123"}`
+			} else if path == "/api/v1/auth/setup" {
+				body = `{"username":"setup-user","password":"test-password-123"}`
+			}
+			r := httptest.NewRequest("POST", path, strings.NewReader(body))
+			r.Host = "example.com"
+			r.AddCookie(cookies[0])
+			if tc.origin != "" {
+				r.Header.Set("Origin", tc.origin)
+			}
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			if tc.want != 0 && w.Code != tc.want {
+				t.Fatalf("status=%d, want %d: %s", w.Code, tc.want, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestConfiguredPublicOriginBehindTLSProxy(t *testing.T) {
+	s := testServer(t)
+	t.Setenv("BLOG_PUBLIC_ORIGIN", "https://blog.example")
+	h := s.routes()
+	cookie := &http.Cookie{Name: sessionCookieName, Value: "test"}
+	for _, tc := range []struct {
+		origin string
+		want   int
+	}{
+		{origin: "https://blog.example", want: http.StatusUnauthorized}, // same origin passes CSRF, then auth validates token
+		{origin: "https://evil.example", want: http.StatusForbidden},
+		{origin: "null", want: http.StatusForbidden},
+	} {
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/admin/articles", strings.NewReader(`{}`))
+		r.Header.Set("Origin", tc.origin)
+		r.AddCookie(cookie)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != tc.want {
+			t.Fatalf("origin %q: status=%d, want %d", tc.origin, w.Code, tc.want)
+		}
+	}
+}
+
+func TestCookieMutationWithoutOriginIsRejected(t *testing.T) {
+	s := testServer(t)
+	if code, _ := call(t, s.routes(), http.MethodPost, "/api/v1/auth/setup", map[string]any{"username": "testadmin", "password": "test-password-123"}, ""); code != http.StatusCreated {
+		t.Fatalf("setup status=%d", code)
+	}
+	token, err := makeToken("testadmin", 1, env("BLOG_JWT_SECRET", ""), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/admin/articles", strings.NewReader(`{}`))
+	r.AddCookie(&http.Cookie{Name: sessionCookieName, Value: token})
+	w := httptest.NewRecorder()
+	s.routes().ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("missing Origin status=%d, want %d", w.Code, http.StatusForbidden)
+	}
+	// Explicit bearer-only clients remain usable without ambient cookies/Origin.
+	r = httptest.NewRequest(http.MethodPost, "/api/v1/admin/articles", strings.NewReader(`{}`))
+	r.Header.Set("Authorization", "Bearer "+token)
+	w = httptest.NewRecorder()
+	s.routes().ServeHTTP(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("bearer request unexpectedly rejected before API validation: status=%d body=%s", w.Code, w.Body.String())
 	}
 }
 
@@ -103,14 +220,32 @@ func TestRecoverAdminRevokesPreviousTokens(t *testing.T) {
 
 func adminToken(t *testing.T, s *server) string {
 	t.Helper()
-	if code, body := call(t, s.routes(), "POST", "/api/v1/auth/setup", map[string]any{"username": "testadmin", "password": "test-password-123"}, ""); code != 201 {
+	h := s.routes()
+	setup := httptest.NewRecorder()
+	setupReq := httptest.NewRequest("POST", "/api/v1/auth/setup", strings.NewReader(`{"username":"testadmin","password":"test-password-123"}`))
+	setupReq.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(setup, setupReq)
+	if code := setup.Code; code != 201 {
+		var body map[string]any
+		_ = json.Unmarshal(setup.Body.Bytes(), &body)
 		t.Fatalf("setup: %d %v", code, body)
 	}
-	code, body := call(t, s.routes(), "POST", "/api/v1/auth/login", map[string]any{"username": "testadmin", "password": "test-password-123"}, "")
-	if code != 200 {
-		t.Fatalf("login: %d %v", code, body)
+	login := httptest.NewRecorder()
+	loginReq := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(`{"username":"testadmin","password":"test-password-123"}`))
+	loginReq.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(login, loginReq)
+	if login.Code != 200 {
+		var body map[string]any
+		_ = json.Unmarshal(login.Body.Bytes(), &body)
+		t.Fatalf("login: %d %v", login.Code, body)
 	}
-	return body["token"].(string)
+	for _, cookie := range login.Result().Cookies() {
+		if cookie.Name == sessionCookieName {
+			return cookie.Value
+		}
+	}
+	t.Fatal("login did not set session cookie")
+	return ""
 }
 
 func TestArticleContract(t *testing.T) {
@@ -204,14 +339,20 @@ func TestTagFriendSettingsAccountContract(t *testing.T) {
 	if code != 200 || account["username"] != "new_admin" {
 		t.Fatalf("account rename %d %v", code, account)
 	}
+	if _, hasToken := account["token"]; hasToken {
+		t.Fatal("account response must not expose the bearer token")
+	}
 	if code, _ = call(t, h, "GET", "/api/v1/admin/articles", nil, token); code != 401 {
 		t.Fatalf("stale token status=%d", code)
 	}
-	newToken := account["token"].(string)
-	if code, _ = call(t, h, "PUT", "/api/v1/admin/account/password", map[string]any{"currentPassword": "bad", "newPassword": "new-password-123"}, newToken); code != 401 {
+	if code, _ = call(t, h, "PUT", "/api/v1/admin/account/password", map[string]any{"currentPassword": "bad", "newPassword": "new-password-123"}, token); code != 401 {
 		t.Fatalf("bad password status=%d", code)
 	}
-	if code, _ = call(t, h, "PUT", "/api/v1/admin/account/password", map[string]any{"currentPassword": "test-password-123", "newPassword": "new-password-123"}, newToken); code != 200 {
+	accountToken, err := makeToken("new_admin", 2, env("BLOG_JWT_SECRET", ""), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, _ = call(t, h, "PUT", "/api/v1/admin/account/password", map[string]any{"currentPassword": "test-password-123", "newPassword": "new-password-123"}, accountToken); code != 200 {
 		t.Fatalf("password change status=%d", code)
 	}
 	if code, _ = call(t, h, "POST", "/api/v1/auth/login", map[string]any{"username": "new_admin", "password": "new-password-123"}, ""); code != 200 {

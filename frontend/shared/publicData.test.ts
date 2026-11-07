@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { clearPublicDataCache, getPublicData } from './publicData.js'
+import { clearPublicDataCache, getPublicData } from './publicData'
 
 test('public GET requests are deduplicated and briefly cached', async () => {
   const originalFetch = globalThis.fetch

@@ -14,20 +14,22 @@ Content is stored in SQLite. The admin console and public site are deployed toge
 
 ## Deployment
 
-Install Docker Engine and Docker Compose, then start the service with the repository's `compose.yaml`:
+Docker is the currently supported deployment method. Install Docker Engine and Docker Compose, obtain `compose.yaml` from the repository, and run it from its directory:
 
 ```sh
 docker compose pull
 docker compose up -d
 ```
 
-The site listens on port `11190` by default, and the admin console is available at `/admin/`. On the first visit, follow the page instructions to create an administrator account. For production, use an HTTPS reverse proxy and set `BLOG_COOKIE_SECURE` to `true`.
+Compose defaults to `latest`, which pulls the most recently published image. To pin a version, change `:latest` in the `image` field to a release tag such as `:v1.0.5`. Upgrades and rollbacks then require changing that one line. There is no separate root `.env` version variable.
+
+The container binds to host `127.0.0.1:11190` by default; the admin console is available at `/admin/`. Before first production startup, set `BLOG_PUBLIC_ORIGIN=https://your-domain`, keep `BLOG_COOKIE_SECURE=true`, and serve through an HTTPS reverse proxy. Compose's `http://127.0.0.1:11190` default is only for local preview. Do not expose an unencrypted port to untrusted networks.
 
 ## Data and backups
 
 Articles, accounts, site settings, the database, and the session signing key are stored in the Docker volume `iblog_data`. Updating or rebuilding the container does not remove this volume; **do not run `docker compose down -v`** or delete `iblog_data` manually.
 
-Back up before upgrades:
+Back up before upgrades. After cloning the repository, run the backup script (Docker and the Alpine image are required):
 
 ```sh
 BLOG_BACKUP_DIR="$HOME/blog-backups" sh scripts/backup.sh
@@ -35,16 +37,36 @@ BLOG_BACKUP_DIR="$HOME/blog-backups" sh scripts/backup.sh
 
 Regularly verify restores and keep backups outside the server. Backup files contain blog data and keys, so handle them as sensitive data.
 
+Restore verification starts a temporary container using the `latest` image by default. Pass an image as the second argument to test a specific version, for example `sh scripts/verify-backup.sh backup.tar.gz ghcr.io/charlesfield19/iblog:v1.0.5`. This tests whether that application image can read the backup; it does not inspect an application version stored in the archive.
+
+### v1.1.0 search and Markdown
+
+v1.1.0 automatically migrates the SQLite search schema on startup. FTS5 ranks title, summary, body, and tag matches while retaining pagination. The Go backend converts Markdown to sanitized HTML; raw HTML, scripts, event attributes, and dangerous URL schemes are removed.
+
+Both frontends use strict TypeScript and Tailwind CSS v4, with shared light/dark tokens and Markdown typography and no legacy CSS layer. Editor previews and public articles use the same backend renderer. `GET /api/v1/health` also reports the application version.
+
+Backups briefly stop the container for consistency and restart it if it was previously running. Override `BLOG_DATA_VOLUME`, `CONTAINER_NAME`, and `BLOG_BACKUP_DIR` to select the target (defaults: `iblog_data`, `iblog`, and `$HOME/blog-backups`). Restore replaces all data in that volume. Save a current backup and confirm the target before running:
+
+```sh
+sh scripts/verify-backup.sh /absolute/path/backup.tar.gz
+CONFIRM_RESTORE=yes sh scripts/restore.sh /absolute/path/backup.tar.gz
+curl -fsS http://127.0.0.1:11190/api/v1/health
+```
+
+Verification uses the local `latest` image, pulling it if absent. To test a newly published version, pull that image first and pass it as the second argument. Restore validates archive paths, entry types, and the database file before touching the target volume; only restore trusted backups. Check login, articles, search, and settings afterward.
+
+There is currently no standalone host-install package or systemd unit. Running on a host requires building the Go backend and frontend assets and configuring the application's environment through a service manager. The application does not require or automatically load a `.env` file.
+
 ## Upgrade and rollback
 
-After a release, update the image version in `compose.yaml` and run:
+With the default `latest` tag, pull and recreate the container to upgrade:
 
 ```sh
 docker compose pull
 docker compose up -d
 ```
 
-To roll back, change the image version back and run the same commands. Keep a backup before upgrading. If a release changes the database schema, confirm that the older version can read the current data before rolling back; restore from backup if necessary.
+For a pinned deployment, change the image tag in `compose.yaml` and run the same commands. Roll back by restoring the previous tag; do not rely on `latest` for rollback. Keep a backup before upgrading. If a release changes the database schema, confirm that the older version can read the current data before rolling back; restore from backup if necessary.
 
 ## License
 

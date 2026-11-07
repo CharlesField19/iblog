@@ -4,24 +4,32 @@
   "type": "module",
   "scripts": {
     "build": "npm run build:web && npm run build:admin",
-    "format": "prettier --write \"{admin,web}/src/**/*.{js,vue}\" \"shared/*.js\" \"{admin,web}/src/styles/reconstruction.css\" \"{admin,web}/index.html\"",
-    "format:check": "prettier --check \"{admin,web}/src/**/*.{js,vue}\" \"shared/*.js\" \"{admin,web}/src/styles/reconstruction.css\" \"{admin,web}/index.html\"",
-    "test:i18n": "node --test shared/i18n.test.js shared/publicData.test.js",
-    "build:web": "vite build --config web/vite.config.js",
-    "build:admin": "vite build --config admin/vite.config.js",
-    "dev:web": "vite --config web/vite.config.js",
-    "dev:admin": "vite --config admin/vite.config.js"
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "format": "prettier --write \"{admin,web}/src/**/*.{ts,vue}\" \"shared/*.{ts,css}\" \"{admin,web}/src/styles/*.css\" \"{admin,web}/index.html\" \"*.json\"",
+    "format:check": "prettier --check \"{admin,web}/src/**/*.{ts,vue}\" \"shared/*.{ts,css}\" \"{admin,web}/src/styles/*.css\" \"{admin,web}/index.html\" \"*.json\"",
+    "test:i18n": "tsx --test shared/*.test.ts",
+    "build:web": "vite build --config web/vite.config.ts",
+    "build:admin": "vite build --config admin/vite.config.ts",
+    "dev:web": "vite --config web/vite.config.ts",
+    "dev:admin": "vite --config admin/vite.config.ts"
   },
   "dependencies": {
-    "dompurify": "^3.4.17",
-    "marked": "^18.1.3",
     "vue": "3.5.44",
     "vue-i18n": "11.4.18",
     "vue-router": "^4.6.0"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/node": "^26.6.6",
     "@vitejs/plugin-vue": "6.0.10",
     "prettier": "3.6.2",
-    "vite": "7.3.5"
+    "tailwindcss": "^4.3.5",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "vite": "7.3.7",
+    "vue-tsc": "^3.3.14"
+  },
+  "overrides": {
+    "esbuild": "0.28.2"
   }
 }

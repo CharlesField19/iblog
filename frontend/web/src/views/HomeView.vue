@@ -1,14 +1,15 @@
-<script setup>
-import { errorMessage } from '../../../shared/i18n.js'
+<script setup lang="ts">
+import { errorMessage } from '../../../shared/i18n'
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { getPublicData } from '../../../shared/publicData.js'
+import { getPublicData } from '../../../shared/publicData'
+import type { ArticleSummary, PageResult, PublicSettings } from '../../../shared/contracts'
 import PostCard from '../components/PostCard.vue'
 import PostCardSkeleton from '../components/PostCardSkeleton.vue'
 
-const posts = ref([])
+const posts = ref<ArticleSummary[]>([])
 const { t } = useI18n()
-const contacts = ref({})
+const contacts = ref<Record<string, string>>({})
 const site = ref({
   name: 'iBlog',
   titlePrefix: "Chenghao's",
@@ -34,7 +35,7 @@ const social = [
     icon: '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
   },
 ]
-function safeExternalUrl(value) {
+function safeExternalUrl(value: string) {
   try {
     const url = new URL(value)
     return ['http:', 'https:'].includes(url.protocol) ? url.href : ''
@@ -47,8 +48,8 @@ async function load() {
   error.value = ''
   try {
     const [articles, settings] = await Promise.all([
-      getPublicData('/api/v1/articles?page=1&pageSize=3'),
-      getPublicData('/api/v1/settings'),
+      getPublicData<PageResult<ArticleSummary>>('/api/v1/articles?page=1&pageSize=3'),
+      getPublicData<PublicSettings>('/api/v1/settings'),
     ])
     posts.value = articles.items || []
     contacts.value = settings.contacts || {}
@@ -91,7 +92,7 @@ onMounted(load)
     </div>
   </section>
   <section class="section">
-    <div class="container article-list-container">
+    <div class="page-container article-list-container">
       <div class="section-head">
         <h2 class="section-title">{{ t('web.latest') }}</h2>
       </div>

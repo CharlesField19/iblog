@@ -1,6 +1,7 @@
-<script setup>
-defineProps({ post: { type: Object, required: true } })
-function formatDate(value) {
+<script setup lang="ts">
+import type { ArticleSummary } from '../../../shared/contracts'
+defineProps<{ post: ArticleSummary }>()
+function formatDate(value?: string | null) {
   if (!value) return ''
   return new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',

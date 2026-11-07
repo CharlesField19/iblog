@@ -1,12 +1,14 @@
-<script setup>
-import { errorMessage } from '../../../shared/i18n.js'
-import { inject, onMounted, reactive, ref } from 'vue'
+<script setup lang="ts">
+import { errorMessage } from '../../../shared/i18n'
+import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { adminRequest } from '../api.js'
+import { adminRequest } from '../api'
+import type { AboutData, AdminSettings } from '../../../shared/contracts'
+import { useToast, useConfirm } from '../injections'
 
-const toast = inject('toast')
+const toast = useToast()
 const { t } = useI18n()
-const state = reactive({ intro: '', bio: '', skills: [], timeline: [], contactNote: '' })
+const state = reactive<AboutData>({ intro: '', bio: '', skills: [], timeline: [], contactNote: '' })
 const skill = ref('')
 const loading = ref(true)
 const saving = ref(false)
@@ -15,7 +17,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const result = await adminRequest('/api/v1/admin/settings')
+    const result = await adminRequest<AdminSettings>('/api/v1/admin/settings')
     Object.assign(state, {
       intro: '',
       bio: '',

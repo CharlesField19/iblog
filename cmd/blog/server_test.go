@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -79,23 +80,13 @@ func TestErrorResponsesExposeOnlyStableCode(t *testing.T) {
 func TestPublicAndAdminFlow(t *testing.T) {
 	s := testServer(t)
 	h := s.routes()
-	if code, _ := call(t, h, "POST", "/api/v1/auth/setup", map[string]any{"username": "testadmin", "password": "test-password-123"}, ""); code != 201 {
-		t.Fatalf("setup status=%d", code)
-	}
 	if code, _ := call(t, h, "GET", "/api/v1/health", nil, ""); code != 200 {
 		t.Fatalf("health status=%d", code)
 	}
 	if code, _ := call(t, h, "GET", "/api/v1/admin/articles", nil, ""); code != 401 {
 		t.Fatalf("unauth admin status=%d", code)
 	}
-	code, login := call(t, h, "POST", "/api/v1/auth/login", map[string]any{"username": "testadmin", "password": "test-password-123"}, "")
-	if code != 200 {
-		t.Fatalf("login status=%d body=%v", code, login)
-	}
-	token, _ := login["token"].(string)
-	if token == "" {
-		t.Fatal("missing login token")
-	}
+	token := adminToken(t, s)
 	code, created := call(t, h, "POST", "/api/v1/admin/articles", map[string]any{"title": "First", "contentMd": "hello", "tags": []string{"Go"}, "status": "published"}, token)
 	if code != 201 {
 		t.Fatalf("create status=%d body=%v", code, created)
@@ -125,11 +116,7 @@ func TestPublicAndAdminFlow(t *testing.T) {
 func TestArticleSlugChangeKeepsOldLink(t *testing.T) {
 	s := testServer(t)
 	h := s.routes()
-	if code, _ := call(t, h, "POST", "/api/v1/auth/setup", map[string]any{"username": "testadmin", "password": "test-password-123"}, ""); code != 201 {
-		t.Fatalf("setup=%d", code)
-	}
-	_, login := call(t, h, "POST", "/api/v1/auth/login", map[string]any{"username": "testadmin", "password": "test-password-123"}, "")
-	token := login["token"].(string)
+	token := adminToken(t, s)
 	_, created := call(t, h, "POST", "/api/v1/admin/articles", map[string]any{"title": "Link preservation", "slug": "old-link", "contentMd": "body", "status": "published"}, token)
 	id := int(created["id"].(float64))
 	code, updated := call(t, h, "PUT", fmt.Sprintf("/api/v1/admin/articles/%d", id), map[string]any{"title": "Link preservation", "slug": "new-link", "contentMd": "body", "status": "published"}, token)
@@ -145,11 +132,7 @@ func TestArticleSlugChangeKeepsOldLink(t *testing.T) {
 func TestBatchArticleActions(t *testing.T) {
 	s := testServer(t)
 	h := s.routes()
-	if code, _ := call(t, h, "POST", "/api/v1/auth/setup", map[string]any{"username": "testadmin", "password": "test-password-123"}, ""); code != 201 {
-		t.Fatalf("setup=%d", code)
-	}
-	_, login := call(t, h, "POST", "/api/v1/auth/login", map[string]any{"username": "testadmin", "password": "test-password-123"}, "")
-	token := login["token"].(string)
+	token := adminToken(t, s)
 	_, first := call(t, h, "POST", "/api/v1/admin/articles", map[string]any{"title": "Draft one", "slug": "draft-one", "summary": "summary", "contentMd": "preview body", "tags": []string{"Go"}, "status": "draft"}, token)
 	_, second := call(t, h, "POST", "/api/v1/admin/articles", map[string]any{"title": "Draft two", "slug": "draft-two", "contentMd": "another body", "tags": []string{"Go"}, "status": "draft"}, token)
 	id1, id2 := int64(first["id"].(float64)), int64(second["id"].(float64))
@@ -213,7 +196,7 @@ func TestFirstRunSetupIsOneTime(t *testing.T) {
 		t.Fatalf("weak setup status=%d", code)
 	}
 	code, created := call(t, h, "POST", "/api/v1/auth/setup", map[string]any{"username": "first-admin", "password": "strong-test-password"}, "")
-	if code != 201 || created["token"] == "" {
+	if code != 201 || created["expiresAt"] == nil {
 		t.Fatalf("setup status=%d data=%v", code, created)
 	}
 	if code, data := call(t, h, "GET", "/api/v1/auth/setup-status", nil, ""); code != 200 || data["setupRequired"] != false {
@@ -269,7 +252,7 @@ func TestLoadOrCreateSecretPersists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatalf("secret permissions=%o, want 600", info.Mode().Perm())
 	}
 }
@@ -277,9 +260,6 @@ func TestLoadOrCreateSecretPersists(t *testing.T) {
 func TestCleanInstallAssetsAndCRUD(t *testing.T) {
 	s := testServer(t)
 	h := s.routes()
-	if code, _ := call(t, h, "POST", "/api/v1/auth/setup", map[string]any{"username": "testadmin", "password": "test-password-123"}, ""); code != 201 {
-		t.Fatalf("setup status=%d", code)
-	}
 	webAssets, err := filepath.Glob(filepath.Join(s.webDist, "assets", "*.js"))
 	if err != nil || len(webAssets) == 0 {
 		t.Fatalf("find built web assets: files=%v err=%v", webAssets, err)
@@ -302,8 +282,7 @@ func TestCleanInstallAssetsAndCRUD(t *testing.T) {
 			t.Fatalf("asset %q: status=%d bytes=%d", path, w.Code, w.Body.Len())
 		}
 	}
-	_, login := call(t, h, "POST", "/api/v1/auth/login", map[string]any{"username": "testadmin", "password": "test-password-123"}, "")
-	token := login["token"].(string)
+	token := adminToken(t, s)
 	code, f := call(t, h, "POST", "/api/v1/admin/friends", map[string]any{"name": "A", "url": "https://example.org"}, token)
 	if code != 201 || f["name"] != "A" {
 		t.Fatalf("friend create: %d %v", code, f)
@@ -345,6 +324,39 @@ func TestCleanInstallAssetsAndCRUD(t *testing.T) {
 	code, listing = call(t, h, "GET", "/api/v1/articles", nil, "")
 	if code != 200 || listing["total"].(float64) != 1 {
 		t.Fatalf("publish list: %d %v", code, listing)
+	}
+}
+
+func TestFTSSearchRanksTitleAndTracksArticleTags(t *testing.T) {
+	s := testServer(t)
+	for _, statement := range []string{
+		`INSERT INTO articles(slug,title,summary,content_md,status,created_at,updated_at,published_at) VALUES('title-hit','SQLite in the title','','unrelated body','published','2026-01-01','2026-01-01','2026-01-01')`,
+		`INSERT INTO articles(slug,title,summary,content_md,status,created_at,updated_at,published_at) VALUES('body-hit','Different title','','SQLite in the body','published','2026-01-02','2026-01-02','2026-01-02')`,
+		`INSERT INTO tags(name) VALUES('SearchableTag')`,
+		`INSERT INTO article_tags(article_id,tag_id) SELECT id,(SELECT id FROM tags WHERE name='SearchableTag') FROM articles WHERE slug='body-hit'`,
+	} {
+		if _, err := s.db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	code, result := call(t, s.routes(), http.MethodGet, "/api/v1/articles?q=SQLite&page=1&pageSize=10", nil, "")
+	if code != http.StatusOK || result["total"] != float64(2) {
+		t.Fatalf("FTS result: status=%d response=%v", code, result)
+	}
+	items := result["items"].([]any)
+	if got := items[0].(map[string]any)["slug"]; got != "title-hit" {
+		t.Fatalf("title match should rank first, got %v", got)
+	}
+	code, result = call(t, s.routes(), http.MethodGet, "/api/v1/articles?q=SearchableTag", nil, "")
+	if code != http.StatusOK || result["total"] != float64(1) {
+		t.Fatalf("tag was not indexed: status=%d response=%v", code, result)
+	}
+	if _, err := s.db.Exec(`UPDATE tags SET name='RenamedSearchTag' WHERE name='SearchableTag'`); err != nil {
+		t.Fatal(err)
+	}
+	code, result = call(t, s.routes(), http.MethodGet, "/api/v1/articles?q=RenamedSearchTag", nil, "")
+	if code != http.StatusOK || result["total"] != float64(1) {
+		t.Fatalf("renamed tag was not reindexed: status=%d response=%v", code, result)
 	}
 }
 

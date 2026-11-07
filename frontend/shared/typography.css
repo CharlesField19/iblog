@@ -1,0 +1,67 @@
+/* Backend-sanitized Markdown has no utility classes; style its elements here. */
+@layer components {
+  .markdown-body {
+    @apply mx-auto max-w-[720px] text-base leading-[1.85] [overflow-wrap:anywhere];
+  }
+  :is(.markdown-body, .md-preview) :is(h1, h2, h3, h4) {
+    @apply leading-[1.35] font-bold tracking-[-0.015em] text-balance;
+    scroll-margin-top: calc(var(--nav-h) + 24px);
+  }
+  :is(.markdown-body, .md-preview) h1 {
+    @apply mt-[2em] mb-[0.7em] text-[28px];
+  }
+  :is(.markdown-body, .md-preview) h2 {
+    @apply mt-[2em] mb-[0.7em] border-b border-line pb-2.5 text-2xl;
+  }
+  :is(.markdown-body, .md-preview) h3 {
+    @apply mt-[2em] mb-[0.7em] text-[19px];
+  }
+  :is(.markdown-body, .md-preview) h4 {
+    @apply mt-6 mb-2 text-[17px];
+  }
+  :is(.markdown-body, .md-preview) :is(p, ul, ol) {
+    @apply mb-[1.35em];
+  }
+  :is(.markdown-body, .md-preview) ul {
+    @apply list-disc pl-[26px];
+  }
+  :is(.markdown-body, .md-preview) ol {
+    @apply list-decimal pl-[26px];
+  }
+  :is(.markdown-body, .md-preview) li {
+    @apply mb-1.5;
+  }
+  :is(.markdown-body, .md-preview) a {
+    @apply underline underline-offset-[3px];
+  }
+  :is(.markdown-body, .md-preview) blockquote {
+    @apply mb-4 rounded-r-xl border-l-[3px] border-accent bg-hover px-[18px] py-2.5 text-muted;
+  }
+  :is(.markdown-body, .md-preview) blockquote p:last-child {
+    @apply mb-0;
+  }
+  :is(.markdown-body, .md-preview) code {
+    @apply rounded-md border border-line bg-hover px-1.5 py-0.5 font-mono text-[0.88em];
+  }
+  :is(.markdown-body, .md-preview) pre {
+    @apply mb-4 overflow-auto rounded-xl border border-line bg-[var(--bg-2)] p-4;
+  }
+  :is(.markdown-body, .md-preview) pre code {
+    @apply block border-0 bg-transparent p-0 text-[13.5px] leading-[1.65] text-ink;
+  }
+  :is(.markdown-body, .md-preview) img {
+    @apply mb-4 max-w-full rounded-xl;
+  }
+  :is(.markdown-body, .md-preview) hr {
+    @apply my-[30px] border-0 border-t border-line;
+  }
+  :is(.markdown-body, .md-preview) table {
+    @apply mb-4 block w-full border-collapse overflow-x-auto text-sm;
+  }
+  :is(.markdown-body, .md-preview) :is(th, td) {
+    @apply border border-line px-3 py-2 text-left;
+  }
+  :is(.markdown-body, .md-preview) th {
+    @apply bg-hover font-semibold;
+  }
+}

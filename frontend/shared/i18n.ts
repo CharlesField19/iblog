@@ -295,7 +295,6 @@ const messages = {
         delete: '删除',
         addTimeline: '+ 添加一段经历',
         contactSection: '联系卡片说明',
-        contactNote: '关于页联系卡片上的一句话',
         introPlaceholder: '介绍一下这个博客…',
         bioPlaceholder: '写一段个人介绍…',
         contactPlaceholder: '欢迎交流与反馈…',
@@ -618,7 +617,6 @@ const messages = {
         delete: 'Delete',
         addTimeline: '+ Add an experience',
         contactSection: 'Contact card note',
-        contactNote: 'A short note on the About page contact card',
         introPlaceholder: 'Introduce this blog…',
         bioPlaceholder: 'Write a short biography…',
         contactPlaceholder: 'Feedback is welcome…',
@@ -652,7 +650,7 @@ const messages = {
 
 function initialLocale() {
   const stored = localStorage.getItem(STORAGE_KEY)
-  if (locales.includes(stored)) return stored
+  if (stored && locales.includes(stored)) return stored
   return navigator.language?.toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN'
 }
 
@@ -663,8 +661,8 @@ export const i18n = createI18n({
   messages,
 })
 
-export function setLocale(locale) {
-  if (!locales.includes(locale)) return
+export function setLocale(locale: string) {
+  if (locale !== 'zh-CN' && locale !== 'en-US') return
   i18n.global.locale.value = locale
   localStorage.setItem(STORAGE_KEY, locale)
   if (typeof document !== 'undefined') document.documentElement.lang = locale
@@ -674,8 +672,9 @@ export function toggleLocale() {
   setLocale(i18n.global.locale.value === 'zh-CN' ? 'en-US' : 'zh-CN')
 }
 
-export function errorMessage(error) {
-  const key = error?.code || 'internal'
+export function errorMessage(error: unknown) {
+  const key =
+    error && typeof error === 'object' && 'code' in error ? String(error.code) : 'internal'
   const path = `errors.${key}`
   return i18n.global.te(path) ? i18n.global.t(path) : i18n.global.t('errors.internal')
 }

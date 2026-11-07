@@ -1,9 +1,10 @@
-<script setup>
+<script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { clearSession } from './session.js'
-import { i18n, toggleLocale } from '../../shared/i18n.js'
+import { clearSession } from './session'
+import { i18n, toggleLocale } from '../../shared/i18n'
+import type { ToastKind } from '../../shared/contracts'
 
 const route = useRoute()
 const router = useRouter()
@@ -24,30 +25,36 @@ function applyTheme() {
 function toggleTheme() {
   theme.value = effectiveDark.value ? 'light' : 'dark'
 }
-function syncSystemTheme(event) {
+function syncSystemTheme(event: MediaQueryListEvent) {
   systemPrefersDark.value = event.matches
 }
 watch([theme, systemPrefersDark], applyTheme, { immediate: true })
 onMounted(() => colorScheme.addEventListener('change', syncSystemTheme))
 onBeforeUnmount(() => colorScheme.removeEventListener('change', syncSystemTheme))
-const notices = ref([])
+const notices = ref<{ id: number; kind: ToastKind; text: string }[]>([])
 let nextId = 0
-function toast(kind, text) {
+function toast(kind: ToastKind, text: string) {
   const id = ++nextId
   notices.value.push({ id, kind, text })
   setTimeout(() => {
     notices.value = notices.value.filter((item) => item.id !== id)
   }, 3200)
 }
-const confirmDialog = ref(null)
-function confirmAction(message, title = t('confirmDefault')) {
-  return new Promise((resolve) => {
+const confirmDialog = ref<{
+  message: string
+  title: string
+  resolve: (value: boolean) => void
+} | null>(null)
+function confirmAction(message: string, title = t('confirmDefault')) {
+  return new Promise<boolean>((resolve) => {
     confirmDialog.value?.resolve(false)
     confirmDialog.value = { message, title, resolve }
-    requestAnimationFrame(() => document.querySelector('.confirm-dialog button')?.focus())
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLButtonElement>('.confirm-dialog button')?.focus(),
+    )
   })
 }
-function finishConfirm(value) {
+function finishConfirm(value: boolean) {
   const current = confirmDialog.value
   confirmDialog.value = null
   current?.resolve(value)
@@ -98,6 +105,20 @@ async function logout() {
           >
         </nav>
         <div class="nav-actions">
+          <button class="link-btn" type="button" @click="logout">{{ t('admin.logout') }}</button>
+          <button
+            class="language-toggle"
+            type="button"
+            :aria-label="$t('languageSwitch')"
+            :title="$t('languageSwitch')"
+            @click="toggleLocale"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M3 5h12M9 3v2m3 0c-1 5-4 8-8 10m1-7c1.5 3 4 5.5 7 7m1 5 4-10 4 10m-6.5-3h5"
+              />
+            </svg>
+          </button>
           <button
             class="theme-toggle"
             type="button"
@@ -111,20 +132,7 @@ async function logout() {
               /></svg
             ><svg v-else viewBox="0 0 24 24" aria-hidden="true">
               <path d="M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z" />
-            </svg></button
-          ><button class="link-btn" type="button" @click="logout">{{ t('admin.logout') }}</button>
-          <button
-            class="language-toggle"
-            type="button"
-            :aria-label="$t('languageSwitch')"
-            @click="toggleLocale"
-          >
-            <span
-              class="language-glyph"
-              :class="{ 'language-glyph--english': $t('language') === '中' }"
-              aria-hidden="true"
-              >{{ $t('language') === '中' ? 'E' : '中' }}</span
-            >
+            </svg>
           </button>
         </div>
       </div>

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"html/template"
 	"io"
 	"net"
 	"net/http"
@@ -21,15 +22,23 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 type server struct {
-	db                 *sql.DB
-	webDist, adminDist string
-	loginMu            sync.Mutex
-	loginFailures      map[string]loginFailure
-	viewMu             sync.Mutex
-	pendingViews       map[int64]int64
+	db                    *sql.DB
+	webDist, adminDist    string
+	loginMu               sync.Mutex
+	loginFailures         map[string]loginFailure
+	viewMu                sync.Mutex
+	pendingViews          map[int64]int64
+	searchCacheMu         sync.Mutex
+	searchCache           map[string]searchCacheEntry
+	searchCacheGeneration uint64
+}
+type searchCacheEntry struct {
+	body      []byte
+	expiresAt time.Time
 }
 type loginFailure struct {
 	count   int
@@ -60,19 +69,20 @@ const (
 )
 
 type article struct {
-	ID          int64        `json:"id"`
-	Slug        string       `json:"slug"`
-	Title       string       `json:"title"`
-	Summary     string       `json:"summary"`
-	Tags        []string     `json:"tags"`
-	Status      string       `json:"status"`
-	Views       int64        `json:"views"`
-	CreatedAt   string       `json:"createdAt"`
-	UpdatedAt   string       `json:"updatedAt"`
-	PublishedAt *string      `json:"publishedAt"`
-	ContentMD   *string      `json:"contentMd,omitempty"`
-	Previous    *articleLink `json:"previous,omitempty"`
-	Next        *articleLink `json:"next,omitempty"`
+	ID          int64         `json:"id"`
+	Slug        string        `json:"slug"`
+	Title       string        `json:"title"`
+	Summary     string        `json:"summary"`
+	Tags        []string      `json:"tags"`
+	Status      string        `json:"status"`
+	Views       int64         `json:"views"`
+	CreatedAt   string        `json:"createdAt"`
+	UpdatedAt   string        `json:"updatedAt"`
+	PublishedAt *string       `json:"publishedAt"`
+	ContentMD   *string       `json:"contentMd,omitempty"`
+	ContentHTML template.HTML `json:"contentHtml,omitempty"`
+	Previous    *articleLink  `json:"previous,omitempty"`
+	Next        *articleLink  `json:"next,omitempty"`
 }
 type articleLink struct {
 	Slug  string `json:"slug"`
@@ -138,7 +148,7 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 503, map[string]string{"status": "unhealthy"})
 		return
 	}
-	writeJSON(w, 200, map[string]string{"status": "ok"})
+	writeJSON(w, 200, map[string]string{"status": "ok", "version": "1.1.0"})
 }
 func (s *server) robots(w http.ResponseWriter, r *http.Request) {
 	base := strings.TrimRight(env("BLOG_PUBLIC_URL", "http://localhost:11190"), "/")
@@ -171,6 +181,8 @@ func (s *server) sitemap(w http.ResponseWriter, r *http.Request) {
 func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	admin := strings.HasPrefix(r.URL.Path, "/api/v1/admin/")
+	cacheKey := ""
+	var cacheGeneration uint64
 	page, size, valid := pageParams(q)
 	if !valid {
 		fail(w, 400, "bad_request", "page must be >= 1 and pageSize must be between 1 and 100")
@@ -181,12 +193,28 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sortBy := q.Get("sort")
-	if admin && sortBy != "" && sortBy != "updated" && sortBy != "oldest" && sortBy != "title" && sortBy != "views" {
+	if !admin && sortBy == "updated" {
 		fail(w, 400, "bad_request", "sort 参数无效")
 		return
 	}
+	if sortBy != "" && sortBy != "updated" && sortBy != "oldest" && sortBy != "title" && sortBy != "views" {
+		fail(w, 400, "bad_request", "sort 参数无效")
+		return
+	}
+	if !admin {
+		cacheKey = publicSearchCacheKey(q)
+		cached, generation := s.getSearchCache(cacheKey)
+		cacheGeneration = generation
+		if cached != nil {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(cached)
+			return
+		}
+	}
 	where := []string{}
 	args := []any{}
+	from := "articles a"
 	if !admin {
 		where = append(where, "a.status='published'")
 	} else if st := q.Get("status"); st != "" {
@@ -194,9 +222,15 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		args = append(args, st)
 	}
 	if text := strings.TrimSpace(q.Get("q")); text != "" {
-		where = append(where, "(a.title LIKE ? ESCAPE '\\' OR a.summary LIKE ? ESCAPE '\\' OR a.content_md LIKE ? ESCAPE '\\' OR EXISTS(SELECT 1 FROM article_tags sx JOIN tags st ON st.id=sx.tag_id WHERE sx.article_id=a.id AND st.name LIKE ? ESCAPE '\\'))")
-		v := "%" + escapeLike(text) + "%"
-		args = append(args, v, v, v, v)
+		if utf8.RuneCountInString(text) < 3 {
+			v := "%" + escapeLike(text) + "%"
+			where = append(where, "(a.title LIKE ? ESCAPE '\\' OR a.summary LIKE ? ESCAPE '\\' OR a.content_md LIKE ? ESCAPE '\\' OR EXISTS(SELECT 1 FROM article_tags sx JOIN tags st ON st.id=sx.tag_id WHERE sx.article_id=a.id AND st.name LIKE ? ESCAPE '\\'))")
+			args = append(args, v, v, v, v)
+		} else {
+			from = "articles a JOIN article_search ON article_search.rowid=a.id"
+			where = append(where, "article_search MATCH ?")
+			args = append(args, ftsQuery(text))
+		}
 	}
 	if tag := strings.TrimSpace(q.Get("tag")); tag != "" {
 		where = append(where, "EXISTS(SELECT 1 FROM article_tags x JOIN tags z ON z.id=x.tag_id WHERE x.article_id=a.id AND z.name=?)")
@@ -207,13 +241,24 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		clause = " WHERE " + strings.Join(where, " AND ")
 	}
 	var total int
-	if err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM articles a"+clause, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM "+from+clause, args...).Scan(&total); err != nil {
 		fail(w, 500, "internal", "服务器内部错误")
 		return
 	}
-	queryArgs := append(append([]any{}, args...), size, (page-1)*size)
+	queryArgs := append([]any{}, args...)
 	orderBy := "COALESCE(a.published_at,a.updated_at) DESC,a.id DESC"
+	if text := strings.TrimSpace(q.Get("q")); utf8.RuneCountInString(text) >= 3 {
+		orderBy = "bm25(article_search, 5.0, 2.0, 1.0, 3.0) ASC, COALESCE(a.published_at,a.updated_at) DESC,a.id DESC"
+		if sortBy == "" || (admin && sortBy == "updated") {
+			orderBy = "CASE WHEN lower(a.title) LIKE lower(?) ESCAPE '\\' THEN 0 ELSE 1 END, " + orderBy
+			queryArgs = append(queryArgs, "%"+escapeLike(text)+"%")
+		}
+	}
 	switch sortBy {
+	case "updated":
+		if text := strings.TrimSpace(q.Get("q")); text == "" || utf8.RuneCountInString(text) < 3 {
+			orderBy = "a.updated_at DESC,a.id DESC"
+		}
 	case "oldest":
 		orderBy = "COALESCE(a.published_at,a.updated_at) ASC,a.id ASC"
 	case "title":
@@ -221,7 +266,8 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 	case "views":
 		orderBy = "a.views DESC,a.id DESC"
 	}
-	rows, err := s.db.QueryContext(r.Context(), "SELECT a.id,a.slug,a.title,a.summary,a.status,a.views,a.created_at,a.updated_at,a.published_at FROM articles a"+clause+" ORDER BY "+orderBy+" LIMIT ? OFFSET ?", queryArgs...)
+	queryArgs = append(queryArgs, size, (page-1)*size)
+	rows, err := s.db.QueryContext(r.Context(), "SELECT a.id,a.slug,a.title,a.summary,a.status,a.views,a.created_at,a.updated_at,a.published_at FROM "+from+clause+" ORDER BY "+orderBy+" LIMIT ? OFFSET ?", queryArgs...)
 	if err != nil {
 		fail(w, 500, "internal", "服务器内部错误")
 		return
@@ -259,22 +305,89 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 			items[i].Tags = []string{}
 		}
 	}
-	writeJSON(w, 200, map[string]any{"items": items, "total": total, "page": page, "pageSize": size})
+	response := map[string]any{"items": items, "total": total, "page": page, "pageSize": size}
+	if cacheKey != "" {
+		if body, marshalErr := json.Marshal(response); marshalErr == nil {
+			s.setSearchCache(cacheKey, body, cacheGeneration)
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(body)
+			return
+		}
+	}
+	writeJSON(w, 200, response)
 }
 func escapeLike(s string) string {
 	r := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_")
 	return r.Replace(s)
+}
+
+func ftsQuery(input string) string {
+	part := strings.ReplaceAll(strings.TrimSpace(input), `"`, `""`)
+	return `"` + part + `"`
+}
+
+func publicSearchCacheKey(q url.Values) string {
+	canonical, _ := json.Marshal([]string{
+		strings.TrimSpace(q.Get("q")),
+		strings.TrimSpace(q.Get("tag")),
+		q.Get("page"),
+		q.Get("pageSize"),
+		q.Get("sort"),
+	})
+	return fmt.Sprintf("%x", sha256.Sum256(canonical))
+}
+
+func (s *server) getSearchCache(key string) ([]byte, uint64) {
+	s.searchCacheMu.Lock()
+	defer s.searchCacheMu.Unlock()
+	entry, exists := s.searchCache[key]
+	if !exists || time.Now().After(entry.expiresAt) {
+		delete(s.searchCache, key)
+		return nil, s.searchCacheGeneration
+	}
+	return append([]byte(nil), entry.body...), s.searchCacheGeneration
+}
+
+func (s *server) setSearchCache(key string, body []byte, generation uint64) {
+	s.searchCacheMu.Lock()
+	defer s.searchCacheMu.Unlock()
+	if generation != s.searchCacheGeneration {
+		return
+	}
+	if s.searchCache == nil {
+		s.searchCache = make(map[string]searchCacheEntry)
+	}
+	if len(s.searchCache) >= 128 {
+		for staleKey, entry := range s.searchCache {
+			if time.Now().After(entry.expiresAt) || len(s.searchCache) >= 96 {
+				delete(s.searchCache, staleKey)
+			}
+		}
+	}
+	s.searchCache[key] = searchCacheEntry{body: append([]byte(nil), body...), expiresAt: time.Now().Add(15 * time.Second)}
+}
+
+func (s *server) invalidateSearchCache() {
+	s.searchCacheMu.Lock()
+	s.searchCacheGeneration++
+	s.searchCache = make(map[string]searchCacheEntry)
+	s.searchCacheMu.Unlock()
 }
 func pageParams(q url.Values) (int, int, bool) {
 	page, size := 1, 10
 	if value := q.Get("page"); value != "" {
 		if n, err := strconv.Atoi(value); err == nil {
 			page = n
+		} else {
+			return 0, 0, false
 		}
 	}
 	if value := q.Get("pageSize"); value != "" {
 		if n, err := strconv.Atoi(value); err == nil {
 			size = n
+		} else {
+			return 0, 0, false
 		}
 	}
 	return page, size, page >= 1 && size >= 1 && size <= 100 && page <= 1000000
@@ -432,6 +545,12 @@ func (s *server) articleBy(r *http.Request, key string, bySlug bool) (article, e
 		}
 	}
 	a.ContentMD = &content
+	if a.Status == "published" || strings.HasPrefix(r.URL.Path, "/api/v1/admin/") {
+		a.ContentHTML, err = renderMarkdown(normalizedMarkdown(content))
+		if err != nil {
+			return a, err
+		}
+	}
 	if pub.Valid {
 		a.PublishedAt = &pub.String
 	}
@@ -592,6 +711,7 @@ func (s *server) createArticle(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal", "服务器内部错误")
 		return
 	}
+	s.invalidateSearchCache()
 	a, err := s.articleBy(r, strconv.FormatInt(id, 10), false)
 	if err != nil {
 		fail(w, 500, "internal", "服务器内部错误")
@@ -718,6 +838,7 @@ func (s *server) updateArticle(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal", "服务器内部错误")
 		return
 	}
+	s.invalidateSearchCache()
 	a, err := s.articleBy(r, id, false)
 	if err != nil {
 		fail(w, 500, "internal", "服务器内部错误")
@@ -737,6 +858,7 @@ func (s *server) deleteArticle(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "not_found", "文章不存在")
 		return
 	}
+	s.invalidateSearchCache()
 	w.WriteHeader(http.StatusNoContent)
 }
 func (s *server) batchArticles(w http.ResponseWriter, r *http.Request) {
@@ -773,6 +895,7 @@ func (s *server) batchArticles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n, _ := result.RowsAffected()
+	s.invalidateSearchCache()
 	writeJSON(w, 200, map[string]any{"affected": n})
 }
 
@@ -791,6 +914,7 @@ func (s *server) saveTag(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		id, _ := res.LastInsertId()
+		s.invalidateSearchCache()
 		writeJSON(w, 201, map[string]any{"id": id, "name": strings.TrimSpace(in.Name), "count": 0})
 		return
 	}
@@ -810,6 +934,7 @@ func (s *server) saveTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	s.invalidateSearchCache()
 	writeJSON(w, 200, map[string]any{"id": id, "name": strings.TrimSpace(in.Name), "count": count})
 }
 func (s *server) deleteTag(w http.ResponseWriter, r *http.Request) {
@@ -823,6 +948,7 @@ func (s *server) deleteTag(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "not_found", "标签不存在")
 		return
 	}
+	s.invalidateSearchCache()
 	w.WriteHeader(http.StatusNoContent)
 }
 func (s *server) saveFriend(w http.ResponseWriter, r *http.Request) {
@@ -985,10 +1111,7 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.clearLoginFailures(ip)
-	ttl, _ := strconv.Atoi(env("BLOG_TOKEN_TTL_HOURS", "72"))
-	if ttl < 1 || ttl > 720 {
-		ttl = 72
-	}
+	ttl := tokenTTLHours()
 	exp := time.Now().UTC().Add(time.Duration(ttl) * time.Hour)
 	var version int
 	if err := s.db.QueryRowContext(r.Context(), "SELECT token_version FROM users WHERE id=?", id).Scan(&version); err != nil {
@@ -1001,7 +1124,7 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setSessionCookie(w, token, exp)
-	writeJSON(w, 200, map[string]string{"token": token, "expiresAt": exp.Format(time.RFC3339)})
+	writeJSON(w, 200, map[string]string{"expiresAt": exp.Format(time.RFC3339)})
 }
 func (s *server) loginBlocked(ip string) bool {
 	s.loginMu.Lock()
@@ -1155,10 +1278,7 @@ func (s *server) changeAccount(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (s *server) loginFromAccount(w http.ResponseWriter, r *http.Request, u string, includeUsername bool) {
-	ttl, _ := strconv.Atoi(env("BLOG_TOKEN_TTL_HOURS", "72"))
-	if ttl < 1 || ttl > 720 {
-		ttl = 72
-	}
+	ttl := tokenTTLHours()
 	exp := time.Now().Add(time.Duration(ttl) * time.Hour)
 	var version int
 	if e := s.db.QueryRowContext(r.Context(), "SELECT token_version FROM users WHERE username=?", u).Scan(&version); e != nil {
@@ -1170,12 +1290,20 @@ func (s *server) loginFromAccount(w http.ResponseWriter, r *http.Request, u stri
 		fail(w, 500, "internal", "JWT secret 未配置")
 		return
 	}
-	response := map[string]string{"token": token, "expiresAt": exp.UTC().Format(time.RFC3339)}
+	response := map[string]string{"expiresAt": exp.UTC().Format(time.RFC3339)}
 	setSessionCookie(w, token, exp)
 	if includeUsername {
 		response["username"] = u
 	}
 	writeJSON(w, 200, response)
+}
+
+func tokenTTLHours() int {
+	ttl, _ := strconv.Atoi(env("BLOG_TOKEN_TTL_HOURS", "72"))
+	if ttl < 1 || ttl > 720 {
+		return 72
+	}
+	return ttl
 }
 
 func setSessionCookie(w http.ResponseWriter, token string, expires time.Time) {
@@ -1196,6 +1324,22 @@ func (s *server) logout(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) adminHandler(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
+	if p == "/api/v1/admin/markdown/preview" && r.Method == http.MethodPost {
+		var input struct {
+			Content string `json:"contentMd"`
+		}
+		if err := decode(r, &input); err != nil || len(input.Content) > maxContentLen {
+			fail(w, http.StatusBadRequest, "bad_request", "invalid Markdown")
+			return
+		}
+		html, err := renderMarkdown(normalizedMarkdown(input.Content))
+		if err != nil {
+			fail(w, http.StatusBadRequest, "bad_request", "invalid Markdown")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"html": string(html)})
+		return
+	}
 	if p == "/api/v1/admin/articles/batch" && r.Method == "POST" {
 		s.batchArticles(w, r)
 		return
@@ -1396,10 +1540,7 @@ func (s *server) setupAdmin(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "already_initialized", "管理员账号已初始化")
 		return
 	}
-	ttl, _ := strconv.Atoi(env("BLOG_TOKEN_TTL_HOURS", "72"))
-	if ttl < 1 || ttl > 720 {
-		ttl = 72
-	}
+	ttl := tokenTTLHours()
 	exp := time.Now().UTC().Add(time.Duration(ttl) * time.Hour)
 	token, err := makeToken(in.Username, 1, env("BLOG_JWT_SECRET", ""), exp)
 	if err != nil {
@@ -1407,5 +1548,5 @@ func (s *server) setupAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setSessionCookie(w, token, exp)
-	writeJSON(w, 201, map[string]string{"token": token, "expiresAt": exp.Format(time.RFC3339)})
+	writeJSON(w, 201, map[string]string{"expiresAt": exp.Format(time.RFC3339)})
 }

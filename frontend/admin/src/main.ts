@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
-import { i18n } from '../../shared/i18n.js'
+import { i18n } from '../../shared/i18n'
 import LoginView from './views/LoginView.vue'
 import DashboardView from './views/DashboardView.vue'
 import EditorView from './views/EditorView.vue'
@@ -10,9 +10,8 @@ import TagManageView from './views/TagManageView.vue'
 import AboutManageView from './views/AboutManageView.vue'
 import SettingsView from './views/SettingsView.vue'
 import AccountView from './views/AccountView.vue'
-import { hasSession } from './session.js'
-import './styles/original.css'
-import './styles/reconstruction.css'
+import { hasSession } from './session'
+import './styles/tailwind.css'
 
 const router = createRouter({
   history: createWebHistory('/admin/'),

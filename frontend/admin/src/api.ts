@@ -1,9 +1,12 @@
-import { request, ApiError } from '../../shared/api.js'
-import { clearSession } from './session.js'
+import { request, ApiError, type RequestOptions } from '../../shared/api'
+import { clearSession } from './session'
 
-export async function adminRequest(path, options = {}) {
+export async function adminRequest<T = unknown>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
   try {
-    return await request(path, options)
+    return await request<T>(path, options)
   } catch (error) {
     if (error instanceof ApiError && error.status === 401 && !path.includes('/api/v1/auth/login')) {
       clearSession()

@@ -1,11 +1,13 @@
-<script setup>
-import { errorMessage } from '../../../shared/i18n.js'
-import { inject, ref } from 'vue'
+<script setup lang="ts">
+import { errorMessage } from '../../../shared/i18n'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { adminRequest } from '../api.js'
-import { saveSession } from '../session.js'
+import { adminRequest } from '../api'
+import type { SessionResponse } from '../../../shared/contracts'
+import { useToast, useConfirm } from '../injections'
+import { saveSession } from '../session'
 
-const toast = inject('toast')
+const toast = useToast()
 const { t } = useI18n()
 const username = ref('')
 const current = ref('')
@@ -21,7 +23,7 @@ async function changeUsername() {
   }
   savingName.value = true
   try {
-    const res = await adminRequest('/api/v1/admin/account/username', {
+    const res = await adminRequest<SessionResponse>('/api/v1/admin/account/username', {
       method: 'PUT',
       body: { username: value },
     })
@@ -45,7 +47,7 @@ async function changePassword() {
   }
   savingPassword.value = true
   try {
-    const res = await adminRequest('/api/v1/admin/account/password', {
+    const res = await adminRequest<SessionResponse>('/api/v1/admin/account/password', {
       method: 'PUT',
       body: { currentPassword: current.value, newPassword: next.value },
     })

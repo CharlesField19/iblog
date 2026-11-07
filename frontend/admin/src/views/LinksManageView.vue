@@ -1,19 +1,21 @@
-<script setup>
-import { errorMessage } from '../../../shared/i18n.js'
-import { inject, onMounted, reactive, ref } from 'vue'
+<script setup lang="ts">
+import { errorMessage } from '../../../shared/i18n'
+import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { adminRequest } from '../api.js'
+import { adminRequest } from '../api'
+import type { Friend } from '../../../shared/contracts'
+import { useToast, useConfirm } from '../injections'
 
-const toast = inject('toast')
+const toast = useToast()
 const { t } = useI18n()
-const confirmAction = inject('confirmAction')
-const items = ref([])
+const confirmAction = useConfirm()
+const items = ref<Friend[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
-const editId = ref(null)
+const editId = ref<number | null>(null)
 const blank = () => ({ name: '', url: '', avatar: '', description: '', sortOrder: 0 })
-function safeHref(value) {
+function safeHref(value: string) {
   try {
     const url = new URL(value)
     return ['http:', 'https:'].includes(url.protocol) ? url.href : ''
@@ -30,7 +32,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    items.value = (await adminRequest('/api/v1/admin/friends')).items || []
+    items.value = (await adminRequest<{ items: Friend[] }>('/api/v1/admin/friends')).items || []
   } catch (e) {
     error.value = errorMessage(e)
   } finally {
@@ -38,7 +40,7 @@ async function load() {
   }
 }
 onMounted(load)
-function edit(item) {
+function edit(item: Friend) {
   editId.value = item.id
   Object.assign(form, {
     name: item.name,
@@ -86,7 +88,7 @@ async function save() {
     saving.value = false
   }
 }
-async function remove(item) {
+async function remove(item: Friend) {
   if (
     !(await confirmAction(
       t('admin.links.deleteConfirm', { name: item.name }),

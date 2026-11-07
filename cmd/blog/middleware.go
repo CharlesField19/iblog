@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -61,11 +62,69 @@ func userOrAnonymous(user string) string {
 	return user
 }
 func isAuditableMutation(r *http.Request) bool {
-	if r.Method != http.MethodPost && r.Method != http.MethodPut && r.Method != http.MethodDelete {
+	if r.Method != http.MethodPost && r.Method != http.MethodPut && r.Method != http.MethodDelete && r.Method != http.MethodPatch {
 		return false
 	}
 	return strings.HasPrefix(r.URL.Path, "/api/v1/admin/") || r.URL.Path == "/api/v1/auth/logout" || r.URL.Path == "/api/v1/auth/login" || r.URL.Path == "/api/v1/auth/setup"
 }
+
+// rejectCrossSiteCookieMutation protects cookie-authenticated writes even when
+// browser cookie policy or deployment topology changes. Authorization bearer
+// requests are not ambient browser credentials and remain usable cross-origin.
+func rejectCrossSiteCookieMutation(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodPost && r.Method != http.MethodPut && r.Method != http.MethodDelete && r.Method != http.MethodPatch {
+		return false
+	}
+	_, cookieErr := r.Cookie(sessionCookieName)
+	bearerAuth := strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if cookieErr != nil && !bearerAuth {
+		return false
+	}
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		if !bearerAuth || cookieErr == nil {
+			fail(w, http.StatusForbidden, "csrf", "cross-site request rejected")
+			return true
+		}
+		return false
+	}
+	if strings.EqualFold(origin, "null") {
+		fail(w, http.StatusForbidden, "csrf", "opaque origin rejected")
+		return true
+	}
+	expected := requestOrigin(r)
+	if configuredOrigin := strings.TrimSpace(env("BLOG_PUBLIC_ORIGIN", "")); configuredOrigin != "" {
+		expected = configuredOrigin
+	}
+	if !sameOrigin(origin, expected) {
+		fail(w, http.StatusForbidden, "csrf", "cross-origin request rejected")
+		return true
+	}
+	if cookieErr != nil && bearerAuth {
+		return false
+	}
+	return false
+}
+
+func requestOrigin(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
+
+func sameOrigin(origin, expected string) bool {
+	parse := func(value string) (*url.URL, bool) {
+		u, err := url.Parse(value)
+		valid := err == nil && u.Scheme != "" && u.Host != "" && u.User == nil && u.RawPath == "" && (u.Path == "" || u.Path == "/") && u.RawQuery == "" && u.Fragment == "" && !strings.ContainsAny(u.Host, "\\%")
+		return u, valid
+	}
+	a, okA := parse(origin)
+	b, okB := parse(expected)
+	return okA && okB && strings.EqualFold(a.Scheme, b.Scheme) && strings.EqualFold(a.Host, b.Host)
+}
+
 func (s *server) securityHeaders(next http.Handler) http.Handler {
 	allowed := make(map[string]bool)
 	for _, origin := range strings.Split(env("BLOG_CORS_ORIGINS", ""), ",") {
@@ -91,6 +150,23 @@ func (s *server) securityHeaders(next http.Handler) http.Handler {
 		if r.Method == http.MethodOptions && strings.HasPrefix(r.URL.Path, "/api/") {
 			w.WriteHeader(http.StatusNoContent)
 			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/v1/admin/") && rejectCrossSiteCookieMutation(w, r) {
+			return
+		}
+		if (r.URL.Path == "/api/v1/auth/logout" || r.URL.Path == "/api/v1/auth/login" || r.URL.Path == "/api/v1/auth/setup") && rejectCrossSiteCookieMutation(w, r) {
+			return
+		}
+		if r.Header.Get("Origin") != "" && (r.URL.Path == "/api/v1/auth/login" || r.URL.Path == "/api/v1/auth/setup") && r.Method == http.MethodPost {
+			origin := r.Header.Get("Origin")
+			expected := requestOrigin(r)
+			if configuredOrigin := strings.TrimSpace(env("BLOG_PUBLIC_ORIGIN", "")); configuredOrigin != "" {
+				expected = configuredOrigin
+			}
+			if !sameOrigin(origin, expected) {
+				fail(w, http.StatusForbidden, "csrf", "cross-origin request rejected")
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})

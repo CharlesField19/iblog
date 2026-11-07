@@ -1,23 +1,25 @@
-<script setup>
-import { errorMessage } from '../../../shared/i18n.js'
-import { inject, ref } from 'vue'
+<script setup lang="ts">
+import { errorMessage } from '../../../shared/i18n'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { adminRequest } from '../api.js'
-import { saveSession } from '../session.js'
-import { request } from '../../../shared/api.js'
+import { adminRequest } from '../api'
+import { useToast, useConfirm } from '../injections'
+import { saveSession } from '../session'
+import { request } from '../../../shared/api'
+import type { SessionResponse } from '../../../shared/contracts'
 
 const router = useRouter()
 const { t } = useI18n()
 const route = useRoute()
-const toast = inject('toast')
+const toast = useToast()
 const username = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
 const setupRequired = ref(false)
 const checking = ref(true)
-request('/api/v1/auth/setup-status')
+request<{ setupRequired: boolean }>('/api/v1/auth/setup-status')
   .then((data) => {
     setupRequired.value = Boolean(data.setupRequired)
   })
@@ -41,11 +43,11 @@ async function submit() {
   error.value = ''
   try {
     const response = setupRequired.value
-      ? await request('/api/v1/auth/setup', {
+      ? await request<SessionResponse>('/api/v1/auth/setup', {
           method: 'POST',
           body: { username: username.value.trim(), password: password.value },
         })
-      : await adminRequest('/api/v1/auth/login', {
+      : await adminRequest<SessionResponse>('/api/v1/auth/login', {
           method: 'POST',
           body: { username: username.value.trim(), password: password.value },
         })
