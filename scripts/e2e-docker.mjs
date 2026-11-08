@@ -73,8 +73,10 @@ async function setupOrLogin(base) {
 try {
   const dataVolume = newVolume(`iblog-e2e-data-${suffix}`)
   let base = await startApp(`iblog-e2e-${suffix}`, dataVolume)
+  const imageVersion = docker(['image', 'inspect', '--format', '{{index .Config.Labels "org.opencontainers.image.version"}}', image]).trim()
+  if (!imageVersion) throw new Error(`image ${image} does not declare an application version`)
   const health = await api(base, '/api/v1/health')
-  if (health.payload.version !== '1.1.0') throw new Error('health endpoint does not identify version 1.1.0')
+  if (health.payload.version !== imageVersion) throw new Error(`health endpoint reports ${health.payload.version}, image version is ${imageVersion}`)
   let cookie = await setupOrLogin(base)
   const created = await api(base, '/api/v1/admin/articles', {
     method: 'POST', cookie, expected: 201,
