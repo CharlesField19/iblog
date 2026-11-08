@@ -21,7 +21,7 @@ docker compose pull
 docker compose up -d
 ```
 
-Compose 默认使用 `latest`，拉取并启动时会使用最近发布的镜像。希望固定版本时，只需把 `compose.yaml` 中 `image` 的 `:latest` 改成对应发布 tag，例如 `:v1.0.5`；升级或回滚时修改同一处即可。仓库根目录没有额外的 `.env` 版本变量。
+Compose 默认使用 `latest`，拉取并启动时会使用最近发布的镜像。希望固定版本时，只需把 `compose.yaml` 中 `image` 的 `:latest` 改成对应发布 tag，例如 `:v1.1.1`；升级或回滚时修改同一处即可。仓库根目录没有额外的 `.env` 版本变量。
 
 站点容器默认只绑定宿主机 `127.0.0.1:11190`，管理入口位于 `/admin/`。首次启动前，生产环境请设置 `BLOG_PUBLIC_ORIGIN=https://你的域名`、保留 `BLOG_COOKIE_SECURE=true`，并由 HTTPS 反向代理提供访问。Compose 默认值 `http://127.0.0.1:11190` 仅适合本机预览；不要直接开放明文端口给不可信网络。
 
@@ -49,7 +49,7 @@ BLOG_BACKUP_DIR="$HOME/blog-backups" sh scripts/backup.sh
 
 备份也应该定期做恢复验证，并保存到服务器之外。备份文件里包含博客数据和密钥，请按敏感数据妥善保管。
 
-恢复验证会用 `latest` 镜像启动临时容器；也可将目标镜像作为第二个参数传入，例如 `sh scripts/verify-backup.sh backup.tar.gz ghcr.io/charlesfield19/iblog:v1.0.5`。这验证的是指定应用镜像能否读取备份，不是检查备份文件中的应用版本。
+恢复验证会用 `latest` 镜像启动临时容器；也可将目标镜像作为第二个参数传入，例如 `sh scripts/verify-backup.sh backup.tar.gz ghcr.io/charlesfield19/iblog:v1.1.1`。这验证的是指定应用镜像能否读取备份，不是检查备份文件中的应用版本。
 
 ### v1.1.0 搜索与 Markdown
 

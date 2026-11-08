@@ -21,7 +21,7 @@ docker compose pull
 docker compose up -d
 ```
 
-Compose defaults to `latest`, which pulls the most recently published image. To pin a version, change `:latest` in the `image` field to a release tag such as `:v1.0.5`. Upgrades and rollbacks then require changing that one line. There is no separate root `.env` version variable.
+Compose defaults to `latest`, which pulls the most recently published image. To pin a version, change `:latest` in the `image` field to a release tag such as `:v1.1.1`. Upgrades and rollbacks then require changing that one line. There is no separate root `.env` version variable.
 
 The container binds to host `127.0.0.1:11190` by default; the admin console is available at `/admin/`. Before first production startup, set `BLOG_PUBLIC_ORIGIN=https://your-domain`, keep `BLOG_COOKIE_SECURE=true`, and serve through an HTTPS reverse proxy. Compose's `http://127.0.0.1:11190` default is only for local preview. Do not expose an unencrypted port to untrusted networks.
 
@@ -49,7 +49,7 @@ BLOG_BACKUP_DIR="$HOME/blog-backups" sh scripts/backup.sh
 
 Regularly verify restores and keep backups outside the server. Backup files contain blog data and keys, so handle them as sensitive data.
 
-Restore verification starts a temporary container using the `latest` image by default. Pass an image as the second argument to test a specific version, for example `sh scripts/verify-backup.sh backup.tar.gz ghcr.io/charlesfield19/iblog:v1.0.5`. This tests whether that application image can read the backup; it does not inspect an application version stored in the archive.
+Restore verification starts a temporary container using the `latest` image by default. Pass an image as the second argument to test a specific version, for example `sh scripts/verify-backup.sh backup.tar.gz ghcr.io/charlesfield19/iblog:v1.1.1`. This tests whether that application image can read the backup; it does not inspect an application version stored in the archive.
 
 ### v1.1.0 search and Markdown
 
