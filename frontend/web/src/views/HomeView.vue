@@ -4,19 +4,31 @@ import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getPublicData } from '../../../shared/publicData'
 import type { ArticleSummary, PageResult, PublicSettings } from '../../../shared/contracts'
+import { takeInitialData } from '../../../shared/initialData'
 import PostCard from '../components/PostCard.vue'
 import PostCardSkeleton from '../components/PostCardSkeleton.vue'
 
-const posts = ref<ArticleSummary[]>([])
+type HomeSite = {
+  name: string
+  titlePrefix: string
+  titleAccent: string
+  subtitle: string
+}
+const initial = takeInitialData<{
+  items?: ArticleSummary[]
+  settings?: { contacts?: Record<string, string>; site?: Partial<HomeSite> }
+}>('home')
+const posts = ref<ArticleSummary[]>(initial?.items || [])
 const { t } = useI18n()
-const contacts = ref<Record<string, string>>({})
-const site = ref({
+const contacts = ref<Record<string, string>>(initial?.settings?.contacts || {})
+const site = ref<HomeSite>({
   name: 'iBlog',
   titlePrefix: "Chenghao's",
   titleAccent: 'Blog',
   subtitle: 'Code · Life · Ideas',
+  ...(initial?.settings?.site || {}),
 })
-const loading = ref(true)
+const loading = ref(!initial)
 const error = ref('')
 const social = [
   {
@@ -60,7 +72,9 @@ async function load() {
     loading.value = false
   }
 }
-onMounted(load)
+onMounted(() => {
+  if (!initial) load()
+})
 </script>
 
 <template>

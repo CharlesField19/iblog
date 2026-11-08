@@ -61,6 +61,13 @@ async function api(base, path, { method = 'GET', cookie, body, expected } = {}) 
   return { status: response.status, payload, headers: response.headers }
 }
 
+async function page(base, path, expected = 200) {
+  const response = await fetch(`${base}${path}`, { headers: { Connection: 'close' }, redirect: 'manual' })
+  const body = await response.text()
+  if (response.status !== expected) throw new Error(`GET ${path}: expected ${expected}, got ${response.status}`)
+  return { response, body }
+}
+
 async function setupOrLogin(base) {
   const status = await api(base, '/api/v1/auth/setup-status')
   const path = status.payload.setupRequired ? '/api/v1/auth/setup' : '/api/v1/auth/login'
@@ -84,6 +91,8 @@ try {
   })
   const id = created.payload.id
   await api(base, `/api/v1/articles/${slug}`, { expected: 404 })
+  const draftPage = await page(base, `/articles/${slug}`, 404)
+  if (draftPage.body.includes('E2E draft') || !draftPage.body.includes('noindex')) throw new Error('draft leaked into SSR HTML')
   const hidden = await api(base, '/api/v1/articles?q=searchable&tag=E2E')
   if (hidden.payload.total !== 0) throw new Error('draft appeared in public filtered results')
 
@@ -93,6 +102,18 @@ try {
   })
   const publicArticle = await api(base, `/api/v1/articles/${slug}`)
   if (publicArticle.payload.title !== 'E2E published') throw new Error('published article is not publicly readable')
+  const rawArticle = await page(base, `/articles/${slug}`)
+  for (const marker of ['<title>E2E published · iBlog</title>', 'E2E body', 'application/ld+json', 'BlogPosting', '__IBLOG_INITIAL__']) {
+    if (!rawArticle.body.includes(marker)) throw new Error(`SSR article HTML is missing ${marker}`)
+  }
+  const rawDraft = await page(base, `/articles/${slug}-draft-missing`, 404)
+  if (!rawDraft.body.includes('noindex')) throw new Error('missing article did not return noindex HTML')
+  const rawUnknown = await page(base, '/unknown-e2e-route', 404)
+  if (!rawUnknown.body.includes('页面不存在')) throw new Error('unknown public route did not return HTML 404')
+  const feed = await page(base, '/feed.xml')
+  if (!feed.body.includes('<rss') || !feed.body.includes(`/articles/${slug}`) || feed.body.includes('E2E draft')) {
+    throw new Error('RSS feed did not contain published-only content')
+  }
   const filtered = await api(base, '/api/v1/articles?q=searchable&tag=E2E&page=1&pageSize=1')
   if (filtered.payload.total !== 1 || filtered.payload.items.length !== 1) throw new Error('search/filter/count contract failed')
 

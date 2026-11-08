@@ -21,7 +21,7 @@ docker compose pull
 docker compose up -d
 ```
 
-Compose 默认使用 `latest`，拉取并启动时会使用最近发布的镜像。希望固定版本时，只需把 `compose.yaml` 中 `image` 的 `:latest` 改成对应发布 tag，例如 `:v1.1.1`；升级或回滚时修改同一处即可。仓库根目录没有额外的 `.env` 版本变量。
+Compose 默认使用 `latest`，拉取并启动时会使用最近发布的镜像。希望固定版本时，只需把 `compose.yaml` 中 `image` 的 `:latest` 改成对应发布 tag，例如 `:v1.1.2`；升级或回滚时修改同一处即可。仓库根目录没有额外的 `.env` 版本变量。
 
 站点容器默认只绑定宿主机 `127.0.0.1:11190`，管理入口位于 `/admin/`。首次启动前，生产环境请设置 `BLOG_PUBLIC_ORIGIN=https://你的域名`、保留 `BLOG_COOKIE_SECURE=true`，并由 HTTPS 反向代理提供访问。Compose 默认值 `http://127.0.0.1:11190` 仅适合本机预览；不要直接开放明文端口给不可信网络。
 
@@ -36,6 +36,10 @@ Compose 默认使用 `latest`，拉取并启动时会使用最近发布的镜像
 5. `BLOG_ADDR` 的端口，仅作本地兜底。
 
 后台填写的值优先级最高，保存后立即生效，无需重启。`BLOG_PUBLIC_ORIGIN` 仍用于校验写请求来源；Compose 默认只绑定本机并设置 `BLOG_TRUST_PROXY=true`，由反向代理转发 `Host`、`X-Forwarded-Proto` 和 `X-Forwarded-Host`。如果使用 HTTPS 而解析结果仍是 `127.0.0.1` 或 `localhost`，启动日志会给出告警。
+
+### v1.1.2 SEO 与服务端渲染
+
+公开首页、文章列表、文章详情、关于和友链页面由 Go 服务端渲染。文章页包含 canonical、Open Graph、BlogPosting 和 BreadcrumbList JSON-LD；草稿、已删除文章和未知公开路径返回 HTML 404，旧 slug 返回 301。搜索页使用 `noindex,follow`，RSS 位于 `/feed.xml`。原始 HTML、Cloudflare 与 Baiduspider 验证步骤见 [`docs/seo-verification.md`](docs/seo-verification.md)。图片封面、上传、处理和 WebP/AVIF 仍暂缓。
 
 ## 数据与备份
 

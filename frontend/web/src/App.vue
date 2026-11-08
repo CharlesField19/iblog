@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { i18n, toggleLocale } from '../../shared/i18n'
 import { getPublicData } from '../../shared/publicData'
+import { readInitialData } from '../../shared/initialData'
 import type { PublicSettings } from '../../shared/contracts'
 
 const route = useRoute()
@@ -15,6 +16,7 @@ const effectiveDark = computed(() =>
 )
 const site = ref({ footerName: 'Chenghao', footerText: '用代码与热爱搭建' })
 const { t } = useI18n()
+let initialRouteMeta = true
 const links = computed(() => [
   { to: '/', label: t('web.home') },
   { to: '/articles', label: t('web.articles') },
@@ -38,6 +40,7 @@ const pageMeta = computed<Record<string, [string, string]>>(() => ({
   '/friends': [`${t('web.friends')} · iBlog`, t('web.friendsIntro')],
 }))
 function applyRouteMeta(path = route.path) {
+  if (initialRouteMeta) return
   if (path.startsWith('/articles/')) return
   const [title, description] = pageMeta.value[path] || pageMeta.value['/']
   document.title = title
@@ -54,7 +57,12 @@ function applyRouteMeta(path = route.path) {
     canonical.rel = 'canonical'
     document.head.appendChild(canonical)
   }
-  canonical.href = new URL(path, window.location.origin).href
+  if (!initialRouteMeta || !canonical.getAttribute('href')) {
+    canonical.href = new URL(
+      path + (path === '/articles' ? window.location.search : ''),
+      window.location.origin,
+    ).href
+  }
   const set = (key: string, value: string, property = false) => {
     const selector = property ? `meta[property="${key}"]` : `meta[name="${key}"]`
     let node = document.head.querySelector<HTMLMetaElement>(selector)
@@ -94,6 +102,11 @@ watch([() => route.path, () => i18n.global.locale.value], () => applyRouteMeta()
 })
 onMounted(async () => {
   colorScheme.addEventListener('change', syncSystemTheme)
+  const initial = readInitialData<{ settings?: { site?: Record<string, string> } }>()
+  if (initial?.settings?.site) site.value = { ...site.value, ...initial.settings.site }
+  initialRouteMeta = false
+  if (initial) return
+  applyRouteMeta()
   try {
     const settings = await getPublicData<PublicSettings>('/api/v1/settings')
     site.value = { ...site.value, ...(settings.site || {}) }

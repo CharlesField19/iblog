@@ -21,7 +21,7 @@ docker compose pull
 docker compose up -d
 ```
 
-Compose defaults to `latest`, which pulls the most recently published image. To pin a version, change `:latest` in the `image` field to a release tag such as `:v1.1.1`. Upgrades and rollbacks then require changing that one line. There is no separate root `.env` version variable.
+Compose defaults to `latest`, which pulls the most recently published image. To pin a version, change `:latest` in the `image` field to a release tag such as `:v1.1.2`. Upgrades and rollbacks then require changing that one line. There is no separate root `.env` version variable.
 
 The container binds to host `127.0.0.1:11190` by default; the admin console is available at `/admin/`. Before first production startup, set `BLOG_PUBLIC_ORIGIN=https://your-domain`, keep `BLOG_COOKIE_SECURE=true`, and serve through an HTTPS reverse proxy. Compose's `http://127.0.0.1:11190` default is only for local preview. Do not expose an unencrypted port to untrusted networks.
 
@@ -36,6 +36,10 @@ The container binds to host `127.0.0.1:11190` by default; the admin console is a
 5. the `BLOG_ADDR` port, as a local-only fallback.
 
 The admin value has the highest priority and applies immediately without a restart. `BLOG_PUBLIC_ORIGIN` still validates the origin of write requests. Compose binds to loopback only and sets `BLOG_TRUST_PROXY=true`, so the local reverse proxy must forward `Host`, `X-Forwarded-Proto` and `X-Forwarded-Host`. If HTTPS is enabled while the resolved address is still `127.0.0.1` or `localhost`, the startup log warns about it.
+
+### v1.1.2 SEO and server-side rendering
+
+The public home, article list, article detail, about and friends pages are server-rendered by Go. Article pages include canonical, Open Graph, BlogPosting and BreadcrumbList JSON-LD metadata; drafts, deleted articles and unknown public paths return HTML 404 responses, while old slugs return 301 redirects. Search pages use `noindex,follow`, and RSS is available at `/feed.xml`. See [`docs/seo-verification.md`](docs/seo-verification.md) for raw HTML, Cloudflare and Baiduspider verification. Cover images, uploads, processing and WebP/AVIF remain deferred.
 
 ## Data and backups
 

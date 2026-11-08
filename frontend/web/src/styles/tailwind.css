@@ -487,3 +487,118 @@
     opacity: 0.45;
   }
 }
+
+/* Server-rendered document shell: readable before the Vue bundle starts. */
+.ssr-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  max-width: var(--nav-max);
+  margin: 0 auto;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.ssr-header > a,
+.ssr-header nav a {
+  color: var(--text);
+  text-decoration: none;
+}
+.ssr-header > a {
+  font-weight: 700;
+}
+.ssr-header nav {
+  display: flex;
+  gap: 1rem;
+}
+.ssr-main {
+  width: min(100% - 3rem, var(--content-max));
+  min-height: 60vh;
+  margin: 0 auto;
+}
+.ssr-hero {
+  padding: clamp(5rem, 16vh, 10rem) 0 5rem;
+  text-align: center;
+}
+.ssr-hero h1 {
+  margin: 0;
+  font-size: clamp(2.75rem, 8vw, 5rem);
+  line-height: 1.08;
+}
+.ssr-hero em {
+  color: var(--accent);
+  font-style: normal;
+}
+.ssr-hero p,
+.ssr-summary {
+  color: var(--text-2);
+}
+.ssr-section {
+  padding: 2rem 0 4rem;
+}
+.ssr-section > h1,
+.ssr-article h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 1.2;
+}
+.ssr-list {
+  display: grid;
+  gap: 1rem;
+}
+.ssr-card {
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+}
+.ssr-card h2 {
+  margin: 0.35rem 0;
+  font-size: 1.3rem;
+}
+.ssr-card h2 a,
+.ssr-article a,
+.ssr-pager a,
+.ssr-card a {
+  color: var(--accent);
+}
+.ssr-meta {
+  color: var(--text-3);
+  font-size: 0.875rem;
+}
+.ssr-article {
+  max-width: 48rem;
+  margin: 3rem auto;
+}
+.ssr-article h1 {
+  margin: 0.75rem 0 1rem;
+}
+.ssr-content {
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.ssr-content img {
+  max-width: 100%;
+  height: auto;
+}
+.ssr-pager {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1.5rem 0;
+}
+.ssr-footer {
+  padding: 2rem 1.5rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-3);
+  text-align: center;
+}
+@media (max-width: 600px) {
+  .ssr-header {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .ssr-main {
+    width: min(100% - 2rem, var(--content-max));
+  }
+}

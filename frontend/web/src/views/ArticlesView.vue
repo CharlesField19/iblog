@@ -5,21 +5,28 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { getPublicData } from '../../../shared/publicData'
 import type { ArticleSummary, PublicTag, PageResult } from '../../../shared/contracts'
+import { takeInitialData } from '../../../shared/initialData'
 import PostCard from '../components/PostCard.vue'
 import PostCardSkeleton from '../components/PostCardSkeleton.vue'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
-const posts = ref<ArticleSummary[]>([])
+const initial = takeInitialData<{
+  items?: ArticleSummary[]
+  page?: number
+  pageSize?: number
+  total?: number
+}>('articles')
+const posts = ref<ArticleSummary[]>(initial?.items || [])
 const tags = ref<PublicTag[]>([])
 const selected = ref(String(route.query.tag || ''))
 const search = ref(String(route.query.q || ''))
-const loading = ref(true)
+const loading = ref(!initial)
 const error = ref('')
-const page = ref(1)
+const page = ref(initial?.page || 1)
 const pageSize = 12
-const total = ref(0)
+const total = ref(initial?.total || 0)
 let timer: ReturnType<typeof setTimeout> | undefined
 let requestId = 0
 const hasMore = computed(() => posts.value.length < total.value)
@@ -90,7 +97,7 @@ watch(
   },
 )
 onMounted(async () => {
-  load()
+  if (!initial) load()
   try {
     tags.value = await getPublicData<PublicTag[]>('/api/v1/tags')
   } catch {}

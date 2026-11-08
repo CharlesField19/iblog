@@ -113,6 +113,33 @@ func TestPublicAndAdminFlow(t *testing.T) {
 	}
 }
 
+func TestNewArticleWithoutSlugUsesSemanticSlug(t *testing.T) {
+	s := testServer(t)
+	h := s.routes()
+	token := adminToken(t, s)
+	code, created := call(t, h, http.MethodPost, "/api/v1/admin/articles", map[string]any{
+		"title": "Hello, Go & SQLite!", "contentMd": "body", "status": "draft",
+	}, token)
+	if code != http.StatusCreated {
+		t.Fatalf("create status=%d body=%v", code, created)
+	}
+	if got := created["slug"]; got != "hello-go-sqlite" {
+		t.Fatalf("semantic slug=%v", got)
+	}
+	code, created = call(t, h, http.MethodPost, "/api/v1/admin/articles", map[string]any{
+		"title": "Hello, Go & SQLite!", "contentMd": "body", "status": "draft",
+	}, token)
+	if code != http.StatusCreated || created["slug"] != "hello-go-sqlite-2" {
+		t.Fatalf("duplicate semantic slug: status=%d body=%v", code, created)
+	}
+	code, _ = call(t, h, http.MethodPost, "/api/v1/admin/articles", map[string]any{
+		"title": "Bad slug", "slug": "not a valid/slug", "contentMd": "body", "status": "draft",
+	}, token)
+	if code != http.StatusBadRequest {
+		t.Fatalf("invalid slug status=%d", code)
+	}
+}
+
 func TestArticleSlugChangeKeepsOldLink(t *testing.T) {
 	s := testServer(t)
 	h := s.routes()
@@ -394,6 +421,9 @@ func TestViewCountsAreBufferedAndFlushedTogether(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		if code, body := call(t, s.routes(), http.MethodGet, "/api/v1/articles/views-test", nil, ""); code != http.StatusOK {
 			t.Fatalf("read article: %d %v", code, body)
+		}
+		if code, body := call(t, s.routes(), http.MethodPost, "/api/v1/articles/views-test/view", nil, ""); code != http.StatusNoContent {
+			t.Fatalf("record view: %d %v", code, body)
 		}
 	}
 	var before int

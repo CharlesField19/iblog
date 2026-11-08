@@ -142,13 +142,16 @@ func validArticleFields(title, slug, summary, content string, tags []string) boo
 	}
 	return true
 }
+func validArticleSlug(slug string) bool {
+	return slug == "" || regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`).MatchString(slug)
+}
 func now() string { return time.Now().UTC().Format(time.RFC3339) }
 func (s *server) health(w http.ResponseWriter, r *http.Request) {
 	if err := s.db.PingContext(r.Context()); err != nil {
 		writeJSON(w, 503, map[string]string{"status": "unhealthy"})
 		return
 	}
-	writeJSON(w, 200, map[string]string{"status": "ok", "version": "1.1.1"})
+	writeJSON(w, 200, map[string]string{"status": "ok", "version": "1.1.2"})
 }
 func (s *server) robots(w http.ResponseWriter, r *http.Request) {
 	base := s.canonicalBaseURL(r)
@@ -470,7 +473,6 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "not_found", "文章不存在")
 		return
 	}
-	s.recordView(a.ID)
 	var previous, next articleLink
 	stamp := a.UpdatedAt
 	if a.PublishedAt != nil {
@@ -489,6 +491,16 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, a)
+}
+func (s *server) recordArticleView(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	a, err := s.articleBy(r, slug, true)
+	if err != nil || a.Status != "published" {
+		fail(w, http.StatusNotFound, "not_found", "文章不存在")
+		return
+	}
+	s.recordView(a.ID)
+	w.WriteHeader(http.StatusNoContent)
 }
 func (s *server) recordView(articleID int64) {
 	s.viewMu.Lock()
@@ -674,7 +686,7 @@ func (s *server) createArticle(w http.ResponseWriter, r *http.Request) {
 	}
 	in.Title = strings.TrimSpace(in.Title)
 	in.Slug = strings.TrimSpace(in.Slug)
-	if !validArticleFields(in.Title, in.Slug, in.Summary, in.Content, in.Tags) {
+	if !validArticleFields(in.Title, in.Slug, in.Summary, in.Content, in.Tags) || !validArticleSlug(in.Slug) {
 		fail(w, 400, "bad_request", "文章字段超出允许范围")
 		return
 	}
@@ -687,7 +699,7 @@ func (s *server) createArticle(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Slug == "" {
 		var err error
-		in.Slug, err = makeSlug()
+		in.Slug, err = makeArticleSlug(s.db, in.Title)
 		if err != nil {
 			fail(w, 500, "internal", "服务器内部错误")
 			return
@@ -742,6 +754,44 @@ func makeSlug() (string, error) {
 	}
 	return "post-" + time.Now().UTC().Format("20060102") + "-" + string(b), nil
 }
+
+func makeArticleSlug(db *sql.DB, title string) (string, error) {
+	base := slugifyTitle(title)
+	if base == "" {
+		return makeSlug()
+	}
+	for i := 0; i < 100; i++ {
+		candidate := base
+		if i > 0 {
+			candidate = fmt.Sprintf("%s-%d", base, i+1)
+		}
+		var count int
+		if err := db.QueryRow("SELECT COUNT(*) FROM articles WHERE slug=? OR EXISTS (SELECT 1 FROM article_slug_aliases WHERE slug=?)", candidate, candidate).Scan(&count); err != nil {
+			return "", err
+		}
+		if count == 0 {
+			return candidate, nil
+		}
+	}
+	return makeSlug()
+}
+
+func slugifyTitle(title string) string {
+	var b strings.Builder
+	lastDash := false
+	for _, r := range strings.ToLower(strings.TrimSpace(title)) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if b.Len() > 0 && !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(strings.TrimSuffix(b.String(), "-"), "-")
+}
 func setArticleTags(r *http.Request, tx *sql.Tx, id int64, names []string) error {
 	var err error
 	if _, err = tx.ExecContext(r.Context(), "DELETE FROM article_tags WHERE article_id=?", id); err != nil {
@@ -791,7 +841,7 @@ func (s *server) updateArticle(w http.ResponseWriter, r *http.Request) {
 	}
 	in.Title = strings.TrimSpace(in.Title)
 	in.Slug = strings.TrimSpace(in.Slug)
-	if !validArticleFields(in.Title, in.Slug, in.Summary, in.Content, in.Tags) {
+	if !validArticleFields(in.Title, in.Slug, in.Summary, in.Content, in.Tags) || (in.Slug != old.Slug && !validArticleSlug(in.Slug)) {
 		fail(w, 400, "bad_request", "文章字段超出允许范围")
 		return
 	}
@@ -1504,8 +1554,10 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/health", s.health)
 	mux.HandleFunc("GET /robots.txt", s.robots)
 	mux.HandleFunc("GET /sitemap.xml", s.sitemap)
+	mux.HandleFunc("GET /feed.xml", s.feedXML)
 	mux.HandleFunc("GET /api/v1/articles", s.listArticles)
 	mux.HandleFunc("GET /api/v1/articles/{slug}", s.getArticle)
+	mux.HandleFunc("POST /api/v1/articles/{slug}/view", s.recordArticleView)
 	mux.HandleFunc("GET /api/v1/tags", s.tags)
 	mux.HandleFunc("GET /api/v1/friends", s.friends)
 	mux.HandleFunc("GET /api/v1/settings", s.settings)
@@ -1517,6 +1569,19 @@ func (s *server) routes() http.Handler {
 		s.adminHandler(w, r)
 	})
 	mux.Handle("/api/v1/admin/", s.authorize(admin))
+	mux.HandleFunc("GET /articles", s.renderArticlesPage)
+	mux.HandleFunc("GET /articles/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/articles", http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("GET /articles/{slug}", s.renderArticlePage)
+	mux.HandleFunc("GET /about", func(w http.ResponseWriter, r *http.Request) { s.renderStaticPage(w, r, "about") })
+	mux.HandleFunc("GET /friends", func(w http.ResponseWriter, r *http.Request) { s.renderStaticPage(w, r, "friends") })
+	mux.HandleFunc("GET /assets/", func(w http.ResponseWriter, r *http.Request) {
+		serveSPA(w, r, s.webDist, "/index.html")
+	})
+	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		serveSPA(w, r, s.webDist, "/favicon.ico")
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.NotFound(w, r)
@@ -1535,7 +1600,11 @@ func (s *server) routes() http.Handler {
 			serveSPA(w, r, s.adminDist, "/index.html")
 			return
 		}
-		serveSPA(w, r, s.webDist, "/index.html")
+		if r.URL.Path == "/" {
+			s.renderHomePage(w, r)
+			return
+		}
+		s.renderNotFound(w, r)
 	})
 	return recoverer(requestLogger(s.securityHeaders(mux)))
 }

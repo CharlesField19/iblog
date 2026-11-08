@@ -4,11 +4,13 @@ import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getPublicData } from '../../../shared/publicData'
 import type { Friend } from '../../../shared/contracts'
+import { takeInitialData } from '../../../shared/initialData'
 import FriendCardSkeleton from '../components/FriendCardSkeleton.vue'
 
-const friends = ref<Friend[]>([])
+const initial = takeInitialData<{ items?: Friend[] }>('friends')
+const friends = ref<Friend[]>(initial?.items || [])
 const error = ref('')
-const loading = ref(true)
+const loading = ref(!initial)
 const { t } = useI18n()
 function safeHref(value: string) {
   try {
@@ -29,7 +31,9 @@ async function load() {
     loading.value = false
   }
 }
-onMounted(load)
+onMounted(() => {
+  if (!initial) load()
+})
 </script>
 
 <template>

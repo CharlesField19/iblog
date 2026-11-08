@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { request } from '../../../shared/api'
 import type { ArticleDetail } from '../../../shared/contracts'
+import { takeInitialData } from '../../../shared/initialData'
 
 const route = useRoute()
 const router = useRouter()
@@ -88,6 +89,7 @@ function formatDate(value?: string | null) {
 }
 let loadVersion = 0
 let loadController: AbortController | undefined
+let viewSlug = ''
 async function load(slug: string | string[]) {
   slug = Array.isArray(slug) ? slug[0] : slug
   if (post.value?.slug === slug) return
@@ -99,12 +101,23 @@ async function load(slug: string | string[]) {
   error.value = ''
   post.value = null
   try {
-    const article = await request<ArticleDetail>(`/api/v1/articles/${encodeURIComponent(slug)}`, {
-      signal: controller.signal,
-    })
+    const initial = takeInitialData<{ article?: ArticleDetail }>('article')
+    const initialArticle = initial?.article
+    const article =
+      initialArticle?.slug === slug
+        ? initialArticle
+        : await request<ArticleDetail>(`/api/v1/articles/${encodeURIComponent(slug)}`, {
+            signal: controller.signal,
+          })
     if (version !== loadVersion) return
     post.value = article
     updateArticleMeta(post.value)
+    if (viewSlug !== article.slug) {
+      viewSlug = article.slug
+      void request(`/api/v1/articles/${encodeURIComponent(article.slug)}/view`, {
+        method: 'POST',
+      }).catch(() => {})
+    }
     if (post.value.slug !== slug) router.replace(`/articles/${encodeURIComponent(post.value.slug)}`)
   } catch (e) {
     if (version !== loadVersion || controller.signal.aborted) return

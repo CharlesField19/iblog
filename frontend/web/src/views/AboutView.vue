@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getPublicData } from '../../../shared/publicData'
 import type { AboutData, PublicSettings } from '../../../shared/contracts'
+import { takeInitialData } from '../../../shared/initialData'
 
 const about = ref<AboutData>({
   intro: '',
@@ -38,6 +39,9 @@ const defaultAbout = () => ({
   contactNote: t('web.aboutDefaultContact'),
 })
 const defaultContacts = { email: '', github: '', x: '', telegram: '' }
+const initial = takeInitialData<{
+  settings?: { about?: Partial<AboutData>; contacts?: Record<string, string> }
+}>('about')
 const social = [
   {
     key: 'github',
@@ -87,8 +91,9 @@ async function copyEmail() {
   }, 2200)
 }
 onMounted(async () => {
-  about.value = defaultAbout()
-  contacts.value = defaultContacts
+  about.value = { ...defaultAbout(), ...(initial?.settings?.about || {}) }
+  contacts.value = { ...defaultContacts, ...(initial?.settings?.contacts || {}) }
+  if (initial) return
   try {
     const settings = await getPublicData<PublicSettings>('/api/v1/settings')
     about.value = { ...about.value, ...(settings.about || {}) }
