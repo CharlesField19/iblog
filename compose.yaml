@@ -15,8 +15,15 @@ services:
       BLOG_ADMIN_DIST: /app/static/admin
       # 仅本机 HTTP 预览可设为 false；生产部署必须使用 HTTPS。
       BLOG_COOKIE_SECURE: "true"
-      # Public origin used to validate browser write requests; override for production HTTPS.
+      # Public origin used to validate browser write requests and as the
+      # fallback for robots.txt / sitemap.xml. Override for production HTTPS.
       BLOG_PUBLIC_ORIGIN: ${BLOG_PUBLIC_ORIGIN:-http://127.0.0.1:11190}
+      # Optional canonical public address. The admin site URL takes precedence
+      # when it is set, so leave this empty unless you need an ops override.
+      BLOG_PUBLIC_URL: ${BLOG_PUBLIC_URL:-}
+      # The container only binds to loopback and expects a local reverse proxy
+      # that forwards Host, X-Forwarded-Proto and X-Forwarded-Host.
+      BLOG_TRUST_PROXY: "true"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:11190/api/v1/health"]
       interval: 30s

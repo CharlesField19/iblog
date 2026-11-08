@@ -25,6 +25,18 @@ Compose defaults to `latest`, which pulls the most recently published image. To 
 
 The container binds to host `127.0.0.1:11190` by default; the admin console is available at `/admin/`. Before first production startup, set `BLOG_PUBLIC_ORIGIN=https://your-domain`, keep `BLOG_COOKIE_SECURE=true`, and serve through an HTTPS reverse proxy. Compose's `http://127.0.0.1:11190` default is only for local preview. Do not expose an unencrypted port to untrusted networks.
 
+### Public address and search engines
+
+`robots.txt` and `sitemap.xml` need a public address, resolved in this order:
+
+1. the admin console's Settings → Site URL;
+2. `BLOG_PUBLIC_URL`;
+3. `BLOG_PUBLIC_ORIGIN`;
+4. the request `Host`, using `X-Forwarded-Proto` / `X-Forwarded-Host` when `BLOG_TRUST_PROXY=true`;
+5. the `BLOG_ADDR` port, as a local-only fallback.
+
+The admin value has the highest priority and applies immediately without a restart. `BLOG_PUBLIC_ORIGIN` still validates the origin of write requests. Compose binds to loopback only and sets `BLOG_TRUST_PROXY=true`, so the local reverse proxy must forward `Host`, `X-Forwarded-Proto` and `X-Forwarded-Host`. If HTTPS is enabled while the resolved address is still `127.0.0.1` or `localhost`, the startup log warns about it.
+
 ## Data and backups
 
 Articles, accounts, site settings, the database, and the session signing key are stored in the Docker volume `iblog_data`. Updating or rebuilding the container does not remove this volume; **do not run `docker compose down -v`** or delete `iblog_data` manually.

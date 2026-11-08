@@ -14,6 +14,7 @@ const saving = ref(false)
 const error = ref('')
 const site = reactive({
   name: 'iBlog',
+  url: '',
   titlePrefix: "Chenghao's",
   titleAccent: 'Blog',
   subtitle: 'Code · Life · Ideas',
@@ -34,6 +35,7 @@ async function load() {
     })
     Object.assign(site, {
       name: 'iBlog',
+      url: '',
       titlePrefix: "Chenghao's",
       titleAccent: 'Blog',
       subtitle: 'Code · Life · Ideas',
@@ -52,6 +54,11 @@ async function save() {
   const email = contacts.email.trim()
   if (email && !email.includes('@')) {
     toast('error', t('admin.settings.invalidEmail'))
+    return
+  }
+  const siteURL = site.url.trim()
+  if (siteURL && !/^https?:\/\/[^\s/]+\/?$/i.test(siteURL)) {
+    toast('error', t('admin.settings.invalidSiteUrl'))
     return
   }
   for (const [label, value] of [
@@ -101,6 +108,19 @@ async function save() {
     <section v-else class="card section-card">
       <h2 class="section-title">{{ t('admin.settings.homepage') }}</h2>
       <p class="page-intro">{{ t('admin.settings.homepageHint') }}</p>
+      <div class="field">
+        <label for="site-url">{{ t('admin.settings.siteUrl') }}</label
+        ><input
+          id="site-url"
+          v-model="site.url"
+          name="siteUrl"
+          type="url"
+          maxlength="200"
+          :placeholder="t('admin.settings.siteUrlPlaceholder')"
+          autocomplete="url"
+        />
+        <p class="field-hint">{{ t('admin.settings.siteUrlHint') }}</p>
+      </div>
       <div class="field">
         <label for="site-name">{{ t('admin.settings.siteName') }}</label
         ><input

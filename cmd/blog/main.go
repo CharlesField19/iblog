@@ -65,6 +65,7 @@ func main() {
 		log.Fatal(err)
 	}
 	app := &server{db: db, webDist: env("BLOG_WEB_DIST", "./frontend/web/dist"), adminDist: env("BLOG_ADMIN_DIST", "./frontend/admin/dist")}
+	warnPublicBase(app)
 	// Bound every phase of an HTTP exchange. ReadHeaderTimeout alone does not
 	// protect the server from slow request bodies or clients that never finish
 	// reading a response.

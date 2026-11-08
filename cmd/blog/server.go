@@ -151,29 +151,40 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"status": "ok", "version": "1.1.0"})
 }
 func (s *server) robots(w http.ResponseWriter, r *http.Request) {
-	base := strings.TrimRight(env("BLOG_PUBLIC_URL", "http://localhost:11190"), "/")
+	base := s.canonicalBaseURL(r)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	fmt.Fprintf(w, "User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /api/\nDisallow: /articles?\nSitemap: %s/sitemap.xml\n", base)
+	fmt.Fprintf(w, "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\nSitemap: %s/sitemap.xml\n", base)
 }
 func (s *server) sitemap(w http.ResponseWriter, r *http.Request) {
-	base := strings.TrimRight(env("BLOG_PUBLIC_URL", "http://localhost:11190"), "/")
+	base := s.canonicalBaseURL(r)
 	rows, err := s.db.QueryContext(r.Context(), "SELECT slug,updated_at FROM articles WHERE status='published' ORDER BY updated_at DESC")
 	if err != nil {
 		fail(w, 500, "internal", "服务器内部错误")
 		return
 	}
 	defer rows.Close()
+	type entry struct{ slug, updated string }
+	var entries []entry
+	for rows.Next() {
+		var item entry
+		if err := rows.Scan(&item.slug, &item.updated); err != nil {
+			fail(w, 500, "internal", "服务器内部错误")
+			return
+		}
+		entries = append(entries, item)
+	}
+	if err := rows.Err(); err != nil {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
+	}
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.WriteHeader(200)
 	fmt.Fprint(w, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">")
 	for _, path := range []string{"/", "/articles", "/about", "/friends"} {
 		fmt.Fprintf(w, "<url><loc>%s</loc></url>", html.EscapeString(base+path))
 	}
-	for rows.Next() {
-		var slug, updated string
-		if rows.Scan(&slug, &updated) == nil {
-			fmt.Fprintf(w, "<url><loc>%s/articles/%s</loc><lastmod>%s</lastmod></url>", html.EscapeString(base), html.EscapeString(url.PathEscape(slug)), html.EscapeString(updated))
-		}
+	for _, item := range entries {
+		fmt.Fprintf(w, "<url><loc>%s/articles/%s</loc><lastmod>%s</lastmod></url>", html.EscapeString(base), html.EscapeString(url.PathEscape(item.slug)), html.EscapeString(item.updated))
 	}
 	fmt.Fprint(w, "</urlset>")
 }
@@ -1026,12 +1037,56 @@ func (s *server) saveSetting(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "bad_request", "setting body must be valid JSON")
 		return
 	}
+	if key == "site" {
+		normalized, ok := normalizeSiteSetting(raw)
+		if !ok {
+			fail(w, 400, "bad_request", "site url must be an http(s) origin without a path")
+			return
+		}
+		raw = normalized
+	}
 	_, err := s.db.ExecContext(r.Context(), "INSERT INTO site_settings(setting_key,value_json,updated_at) VALUES(?,?,?) ON CONFLICT(setting_key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at", key, string(raw), now())
 	if err != nil {
 		fail(w, 500, "internal", "服务器内部错误")
 		return
 	}
 	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+// normalizeSiteSetting keeps the site object extensible while validating the
+// public address used to build robots.txt and sitemap.xml. An empty url clears
+// the setting so the environment fallback applies again.
+func normalizeSiteSetting(raw json.RawMessage) (json.RawMessage, bool) {
+	var site map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &site); err != nil {
+		return nil, false
+	}
+	value, present := site["url"]
+	if !present {
+		return raw, true
+	}
+	var siteURL string
+	if err := json.Unmarshal(value, &siteURL); err != nil {
+		return nil, false
+	}
+	if strings.TrimSpace(siteURL) == "" {
+		delete(site, "url")
+	} else {
+		base, ok := parsePublicBase(siteURL)
+		if !ok {
+			return nil, false
+		}
+		normalized, err := json.Marshal(base)
+		if err != nil {
+			return nil, false
+		}
+		site["url"] = normalized
+	}
+	encoded, err := json.Marshal(site)
+	if err != nil {
+		return nil, false
+	}
+	return encoded, true
 }
 
 // Password hashes use a salted PBKDF2-HMAC-SHA256 encoding for clean installs.

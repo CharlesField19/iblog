@@ -255,6 +255,11 @@ const messages = {
         homepage: '主页内容',
         homepageHint: '这些内容会显示在首页主视觉区、浏览器标题和页脚。',
         siteName: '站点名称',
+        siteUrl: '站点地址',
+        siteUrlPlaceholder: 'https://blog.example.com',
+        siteUrlHint:
+          '用于生成 robots.txt 与 sitemap.xml；留空时依次使用 BLOG_PUBLIC_URL、BLOG_PUBLIC_ORIGIN。',
+        invalidSiteUrl: '站点地址需为 http(s):// 域名，且不能带路径',
         titlePrefix: '主页标题（前半段）',
         titleAccent: '主页标题（强调部分）',
         subtitle: '主页标语',
@@ -577,6 +582,11 @@ const messages = {
         homepage: 'Home page content',
         homepageHint: 'Shown in the home page hero, browser title, and footer.',
         siteName: 'Site name',
+        siteUrl: 'Site URL',
+        siteUrlPlaceholder: 'https://blog.example.com',
+        siteUrlHint:
+          'Used for robots.txt and sitemap.xml. Leave empty to use BLOG_PUBLIC_URL, then BLOG_PUBLIC_ORIGIN.',
+        invalidSiteUrl: 'Site URL must be an http(s):// origin without a path',
         titlePrefix: 'Home title (prefix)',
         titleAccent: 'Home title (highlight)',
         subtitle: 'Home tagline',

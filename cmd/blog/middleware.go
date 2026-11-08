@@ -92,10 +92,7 @@ func rejectCrossSiteCookieMutation(w http.ResponseWriter, r *http.Request) bool 
 		fail(w, http.StatusForbidden, "csrf", "opaque origin rejected")
 		return true
 	}
-	expected := requestOrigin(r)
-	if configuredOrigin := strings.TrimSpace(env("BLOG_PUBLIC_ORIGIN", "")); configuredOrigin != "" {
-		expected = configuredOrigin
-	}
+	expected := expectedRequestOrigin(r)
 	if !sameOrigin(origin, expected) {
 		fail(w, http.StatusForbidden, "csrf", "cross-origin request rejected")
 		return true
@@ -111,7 +108,28 @@ func requestOrigin(r *http.Request) string {
 	if r.TLS != nil {
 		scheme = "https"
 	}
-	return scheme + "://" + r.Host
+	host := r.Host
+	if trustProxy() {
+		if forwarded := firstForwardedValue(r.Header.Get("X-Forwarded-Proto")); strings.EqualFold(forwarded, "https") || strings.EqualFold(forwarded, "http") {
+			scheme = strings.ToLower(forwarded)
+		}
+		if forwarded := firstForwardedValue(r.Header.Get("X-Forwarded-Host")); forwarded != "" {
+			host = forwarded
+		}
+	}
+	return scheme + "://" + host
+}
+
+// expectedRequestOrigin prefers the configured origin, but treats a loopback
+// value as a preview placeholder when the request arrives for a real host, so
+// the shipped compose default cannot lock administrators out behind a proxy.
+func expectedRequestOrigin(r *http.Request) string {
+	if configured := strings.TrimSpace(env("BLOG_PUBLIC_ORIGIN", "")); configured != "" {
+		if !isLoopbackBase(configured) || requestUsesLoopbackHost(r) {
+			return configured
+		}
+	}
+	return requestOrigin(r)
 }
 
 func sameOrigin(origin, expected string) bool {
@@ -159,11 +177,7 @@ func (s *server) securityHeaders(next http.Handler) http.Handler {
 		}
 		if r.Header.Get("Origin") != "" && (r.URL.Path == "/api/v1/auth/login" || r.URL.Path == "/api/v1/auth/setup") && r.Method == http.MethodPost {
 			origin := r.Header.Get("Origin")
-			expected := requestOrigin(r)
-			if configuredOrigin := strings.TrimSpace(env("BLOG_PUBLIC_ORIGIN", "")); configuredOrigin != "" {
-				expected = configuredOrigin
-			}
-			if !sameOrigin(origin, expected) {
+			if !sameOrigin(origin, expectedRequestOrigin(r)) {
 				fail(w, http.StatusForbidden, "csrf", "cross-origin request rejected")
 				return
 			}

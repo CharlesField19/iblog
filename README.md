@@ -25,6 +25,18 @@ Compose 默认使用 `latest`，拉取并启动时会使用最近发布的镜像
 
 站点容器默认只绑定宿主机 `127.0.0.1:11190`，管理入口位于 `/admin/`。首次启动前，生产环境请设置 `BLOG_PUBLIC_ORIGIN=https://你的域名`、保留 `BLOG_COOKIE_SECURE=true`，并由 HTTPS 反向代理提供访问。Compose 默认值 `http://127.0.0.1:11190` 仅适合本机预览；不要直接开放明文端口给不可信网络。
 
+### 站点地址与搜索引擎
+
+`robots.txt` 和 `sitemap.xml` 需要一个公开地址，按以下顺序解析：
+
+1. 管理后台「站点设置 → 站点地址」；
+2. `BLOG_PUBLIC_URL`；
+3. `BLOG_PUBLIC_ORIGIN`；
+4. 请求的 `Host`；设置 `BLOG_TRUST_PROXY=true` 时改用 `X-Forwarded-Proto` / `X-Forwarded-Host`；
+5. `BLOG_ADDR` 的端口，仅作本地兜底。
+
+后台填写的值优先级最高，保存后立即生效，无需重启。`BLOG_PUBLIC_ORIGIN` 仍用于校验写请求来源；Compose 默认只绑定本机并设置 `BLOG_TRUST_PROXY=true`，由反向代理转发 `Host`、`X-Forwarded-Proto` 和 `X-Forwarded-Host`。如果使用 HTTPS 而解析结果仍是 `127.0.0.1` 或 `localhost`，启动日志会给出告警。
+
 ## 数据与备份
 
 文章、账号、站点设置、数据库和会话签名密钥保存在 Docker 数据卷 `iblog_data` 中。更新或重建容器不会删除这个数据卷；**不要使用 `docker compose down -v`**，也不要手动删除 `iblog_data`。
