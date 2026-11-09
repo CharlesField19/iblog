@@ -575,7 +575,6 @@ html.home-snap #latest-articles {
   }
 }
 
-
 @media (prefers-reduced-motion: reduce) {
   .hero-scroll-cue::before,
   .ssr-scroll-cue::before {
