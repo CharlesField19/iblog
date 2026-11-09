@@ -265,11 +265,30 @@ func TestRequestCorrelationAndAuditLogsDoNotIncludeRequestBodies(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	requestID := w.Header().Get("X-Request-ID")
-	if requestID == "" || !strings.Contains(output.String(), "request_id="+requestID) || !strings.Contains(output.String(), "audit request_id="+requestID) || !strings.Contains(output.String(), "user=audit-user") {
-		t.Fatalf("missing correlation/audit log: header=%q logs=%q", requestID, output.String())
+	logs := output.String()
+	if requestID == "" || !strings.Contains(logs, `"msg":"http"`) || !strings.Contains(logs, `"msg":"audit"`) || !strings.Contains(logs, `"request_id":"`+requestID+`"`) || !strings.Contains(logs, `"user":"audit-user"`) {
+		t.Fatalf("missing correlation/audit log: header=%q logs=%q", requestID, logs)
 	}
-	if strings.Contains(output.String(), "do-not-log") || strings.Contains(output.String(), "private body") {
-		t.Fatalf("sensitive request body was logged: %s", output.String())
+	if strings.Contains(logs, "do-not-log") || strings.Contains(logs, "private body") {
+		t.Fatalf("sensitive request body was logged: %s", logs)
+	}
+}
+
+func TestPanicIsLoggedWithoutExposingTheStack(t *testing.T) {
+	var output bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&output)
+	defer log.SetOutput(previous)
+	h := recoverer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("secret-stack-trigger")
+	}))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/boom", nil))
+	if w.Code != http.StatusInternalServerError || strings.Contains(w.Body.String(), "secret-stack-trigger") {
+		t.Fatalf("panic response leaked details: status=%d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(output.String(), `"msg":"panic"`) || !strings.Contains(output.String(), "secret-stack-trigger") || !strings.Contains(output.String(), "goroutine") {
+		t.Fatalf("panic was not logged with a stack: %s", output.String())
 	}
 }
 

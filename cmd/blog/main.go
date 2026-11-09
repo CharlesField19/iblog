@@ -65,7 +65,13 @@ func main() {
 		log.Fatal(err)
 	}
 	app := &server{db: db, webDist: env("BLOG_WEB_DIST", "./frontend/web/dist"), adminDist: env("BLOG_ADMIN_DIST", "./frontend/admin/dist")}
-	warnPublicBase(app)
+	if err = validateProductionConfig(app); err != nil {
+		logEvent("error", "invalid production configuration", map[string]any{"error": err.Error()})
+		log.Fatal(err)
+	}
+	if warning := productionConfigWarning(app); warning != "" {
+		logEvent("warn", "insecure public deployment", map[string]any{"warning": warning})
+	}
 	// Bound every phase of an HTTP exchange. ReadHeaderTimeout alone does not
 	// protect the server from slow request bodies or clients that never finish
 	// reading a response.
@@ -88,12 +94,12 @@ func main() {
 			select {
 			case <-ticker.C:
 				if err := app.flushViews(context.Background()); err != nil {
-					log.Printf("view flush failed: %v", err)
+					logEvent("error", "view flush failed", map[string]any{"error": err.Error()})
 				}
 			case <-ctx.Done():
 				flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				if err := app.flushViews(flushCtx); err != nil {
-					log.Printf("final view flush failed: %v", err)
+					logEvent("error", "final view flush failed", map[string]any{"error": err.Error()})
 				}
 				cancel()
 				return
@@ -106,7 +112,7 @@ func main() {
 		defer cancel()
 		_ = httpServer.Shutdown(shutdown)
 	}()
-	log.Printf("blog server listening on %s", httpServer.Addr)
+	logEvent("info", "server listening", map[string]any{"addr": httpServer.Addr})
 	err = httpServer.ListenAndServe()
 	stop()
 	<-flushDone

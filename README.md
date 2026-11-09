@@ -21,9 +21,13 @@ docker compose pull
 docker compose up -d
 ```
 
-Compose 默认使用 `latest`，拉取并启动时会使用最近发布的镜像。希望固定版本时，只需把 `compose.yaml` 中 `image` 的 `:latest` 改成对应发布 tag，例如 `:v1.1.4`；升级或回滚时修改同一处即可。仓库根目录没有额外的 `.env` 版本变量。
+Compose 默认使用 `latest`，拉取并启动时会使用最近发布的镜像。希望固定版本时，只需把 `compose.yaml` 中 `image` 的 `:latest` 改成对应发布 tag，例如 `:v1.1.5`；升级或回滚时修改同一处即可。仓库根目录没有额外的 `.env` 版本变量。
 
-站点容器默认只绑定宿主机 `127.0.0.1:11190`，管理入口位于 `/admin/`。首次启动前，生产环境请设置 `BLOG_PUBLIC_ORIGIN=https://你的域名`、保留 `BLOG_COOKIE_SECURE=true`，并由 HTTPS 反向代理提供访问。Compose 默认值 `http://127.0.0.1:11190` 仅适合本机预览；不要直接开放明文端口给不可信网络。
+站点容器默认只绑定宿主机 `127.0.0.1:11190`，管理入口位于 `/admin/`。默认值（`BLOG_COOKIE_SECURE=false` + `http://127.0.0.1:11190`）就是本机 HTTP 预览，可直接 `docker compose up -d`。生产环境请设置 `BLOG_PUBLIC_ORIGIN=https://你的域名` 并把 `BLOG_COOKIE_SECURE` 改为 `true`，由 HTTPS 反向代理提供访问：
+
+- `https://` 站点地址搭配非安全 Cookie 会在启动时直接拒绝；
+- 开启了 `BLOG_TRUST_PROXY=true` 但没有设置公开地址时，启动日志会告警；
+- 不要直接开放明文端口给不可信网络。
 
 ### 站点地址与搜索引擎
 
@@ -44,6 +48,14 @@ Compose 默认使用 `latest`，拉取并启动时会使用最近发布的镜像
 ## 数据与备份
 
 文章、账号、站点设置、数据库和会话签名密钥保存在 Docker 数据卷 `iblog_data` 中。更新或重建容器不会删除这个数据卷；**不要使用 `docker compose down -v`**，也不要手动删除 `iblog_data`。
+
+如果改用宿主目录绑定挂载（例如 `-v /srv/iblog:/data`）代替 `iblog_data` 卷，目录属主必须是容器用户 `10001:10001`：
+
+```sh
+install -d -o 10001 -g 10001 -m 700 /srv/iblog
+```
+
+否则容器会因无法写入 `jwt_secret` 和数据库而退出。使用默认的命名卷时不需要额外设置。
 
 升级之前先备份。克隆仓库后可运行备份脚本（脚本需要 Docker 和 Alpine 镜像）：
 

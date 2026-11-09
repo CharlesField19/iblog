@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"strings"
 	"time"
 )
@@ -40,10 +42,22 @@ func requestLogger(next http.Handler) http.Handler {
 		started := time.Now()
 		wrapped := &statusWriter{ResponseWriter: w}
 		next.ServeHTTP(wrapped, r)
-		log.Printf("http request_id=%s method=%s path=%s status=%d duration=%s", requestID, r.Method, r.URL.Path, wrapped.status, time.Since(started).Round(time.Millisecond))
+		logEvent("info", "http", map[string]any{
+			"request_id":  requestID,
+			"method":      r.Method,
+			"path":        r.URL.Path,
+			"status":      wrapped.status,
+			"duration_ms": time.Since(started).Milliseconds(),
+		})
 		if isAuditableMutation(r) {
 			user, _ := r.Context().Value(usernameKey).(string)
-			log.Printf("audit request_id=%s user=%s action=%s path=%s status=%d", requestID, userOrAnonymous(user), r.Method, r.URL.Path, wrapped.status)
+			logEvent("info", "audit", map[string]any{
+				"request_id": requestID,
+				"user":       userOrAnonymous(user),
+				"action":     r.Method,
+				"path":       r.URL.Path,
+				"status":     wrapped.status,
+			})
 		}
 	})
 }
@@ -188,10 +202,37 @@ func (s *server) securityHeaders(next http.Handler) http.Handler {
 func recoverer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
-			if recover() != nil {
-				fail(w, 500, "internal", "服务器内部错误")
+			recovered := recover()
+			if recovered == nil {
+				return
 			}
+			requestID, _ := r.Context().Value(requestIDKey).(string)
+			logEvent("error", "panic", map[string]any{
+				"request_id": requestID,
+				"method":     r.Method,
+				"path":       r.URL.Path,
+				"error":      fmt.Sprint(recovered),
+				"stack":      string(debug.Stack()),
+			})
+			fail(w, 500, "internal", "服务器内部错误")
 		}()
 		next.ServeHTTP(w, r)
 	})
+}
+
+func logEvent(level, message string, fields map[string]any) {
+	event := map[string]any{
+		"time":  time.Now().UTC().Format(time.RFC3339Nano),
+		"level": level,
+		"msg":   message,
+	}
+	for key, value := range fields {
+		event[key] = value
+	}
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		log.Printf(`{"level":"error","msg":"log encode failed"}`)
+		return
+	}
+	log.Print(string(encoded))
 }

@@ -207,3 +207,58 @@ func TestExpectedRequestOriginIgnoresLoopbackPlaceholder(t *testing.T) {
 		t.Fatalf("configured origin was not preferred: %q", got)
 	}
 }
+
+func TestProductionConfigRejectsContradictions(t *testing.T) {
+	s := testServer(t)
+	t.Setenv("BLOG_COOKIE_SECURE", "false")
+	t.Setenv("BLOG_TRUST_PROXY", "false")
+	t.Setenv("BLOG_PUBLIC_URL", "")
+	t.Setenv("BLOG_PUBLIC_ORIGIN", "")
+	if err := validateProductionConfig(s); err != nil {
+		t.Fatalf("local preview was rejected: %v", err)
+	}
+	t.Setenv("BLOG_COOKIE_SECURE", "true")
+	t.Setenv("BLOG_PUBLIC_ORIGIN", "http://127.0.0.1:11190")
+	if err := validateProductionConfig(s); err == nil {
+		t.Fatal("secure cookies with a loopback origin were accepted")
+	}
+	t.Setenv("BLOG_COOKIE_SECURE", "false")
+	t.Setenv("BLOG_PUBLIC_URL", "https://blog.example.com")
+	if err := validateProductionConfig(s); err == nil {
+		t.Fatal("https origin with insecure cookies was accepted")
+	}
+	t.Setenv("BLOG_COOKIE_SECURE", "true")
+	t.Setenv("BLOG_TRUST_PROXY", "true")
+	t.Setenv("BLOG_PUBLIC_URL", "http://blog.example.com")
+	if err := validateProductionConfig(s); err == nil {
+		t.Fatal("trusted proxy with secure cookies and http origin was accepted")
+	}
+	t.Setenv("BLOG_PUBLIC_URL", "https://blog.example.com")
+	if err := validateProductionConfig(s); err != nil {
+		t.Fatalf("valid production configuration was rejected: %v", err)
+	}
+}
+
+func TestProductionConfigWarningForInsecureProxyDeployment(t *testing.T) {
+	s := testServer(t)
+	t.Setenv("BLOG_COOKIE_SECURE", "false")
+	t.Setenv("BLOG_TRUST_PROXY", "true")
+	t.Setenv("BLOG_PUBLIC_URL", "")
+	t.Setenv("BLOG_PUBLIC_ORIGIN", "http://127.0.0.1:11190")
+	if warning := productionConfigWarning(s); warning != "" {
+		t.Fatalf("local preview warned: %q", warning)
+	}
+	t.Setenv("BLOG_PUBLIC_ORIGIN", "")
+	if warning := productionConfigWarning(s); warning == "" {
+		t.Fatal("proxy deployment without a site URL was not warned")
+	}
+	t.Setenv("BLOG_PUBLIC_ORIGIN", "http://blog.example.com")
+	if warning := productionConfigWarning(s); warning == "" {
+		t.Fatal("public http proxy deployment was not warned")
+	}
+	t.Setenv("BLOG_COOKIE_SECURE", "true")
+	t.Setenv("BLOG_PUBLIC_ORIGIN", "https://blog.example.com")
+	if warning := productionConfigWarning(s); warning != "" {
+		t.Fatalf("secure deployment warned: %q", warning)
+	}
+}

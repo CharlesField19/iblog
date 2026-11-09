@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"log"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -161,18 +161,33 @@ func (s *server) canonicalBaseURL(r *http.Request) string {
 	return listenBaseURL()
 }
 
-// warnPublicBase surfaces the most common production misconfiguration early:
-// HTTPS deployments left pointing at a loopback address.
-func warnPublicBase(s *server) {
-	if env("BLOG_COOKIE_SECURE", "false") != "true" {
-		return
-	}
+// validateProductionConfig rejects combinations that would publish insecure
+// cookies or generate a public sitemap for the wrong host. Local HTTP
+// preview remains valid when secure cookies and a public HTTPS origin are unset.
+func validateProductionConfig(s *server) error {
+	secure := env("BLOG_COOKIE_SECURE", "false") == "true"
 	base, ok := s.staticBaseURL()
-	if !ok {
-		log.Printf("warning: no public site URL configured; robots.txt and sitemap.xml fall back to the request host. Set the site URL in admin or BLOG_PUBLIC_URL")
-		return
+	if ok && strings.HasPrefix(base, "https://") && !secure {
+		return fmt.Errorf("https public site URL %s requires BLOG_COOKIE_SECURE=true", base)
 	}
-	if isLoopbackBase(base) {
-		log.Printf("warning: public site URL is %s; robots.txt and sitemap.xml will be wrong for remote visitors. Set the site URL in admin or BLOG_PUBLIC_URL", base)
+	if secure && (!ok || isLoopbackBase(base)) {
+		return fmt.Errorf("BLOG_COOKIE_SECURE=true requires a non-loopback public site URL in admin, BLOG_PUBLIC_URL, or BLOG_PUBLIC_ORIGIN")
 	}
+	if trustProxy() && secure && ok && strings.HasPrefix(base, "http://") {
+		return fmt.Errorf("BLOG_TRUST_PROXY=true with secure cookies requires an https public site URL, got %s", base)
+	}
+	return nil
+}
+
+// productionConfigWarning reports deployments that start but still publish
+// session cookies over an unencrypted public connection. The local preview
+// default (loopback origin) stays silent; anything else is operator-facing.
+func productionConfigWarning(s *server) string {
+	if env("BLOG_COOKIE_SECURE", "false") == "true" || !trustProxy() {
+		return ""
+	}
+	if base, ok := s.staticBaseURL(); ok && isLoopbackBase(base) {
+		return ""
+	}
+	return "BLOG_TRUST_PROXY=true with BLOG_COOKIE_SECURE=false: public HTTPS deployments must set BLOG_PUBLIC_ORIGIN=https://<domain> and BLOG_COOKIE_SECURE=true"
 }

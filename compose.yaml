@@ -13,10 +13,13 @@ services:
       BLOG_DB_PATH: /data/blog.db
       BLOG_WEB_DIST: /app/static/web
       BLOG_ADMIN_DIST: /app/static/admin
-      # 仅本机 HTTP 预览可设为 false；生产部署必须使用 HTTPS。
-      BLOG_COOKIE_SECURE: "true"
+      # 默认值与下方 loopback 地址配合，用于本机 HTTP 预览。
+      # 生产部署必须改为 "true"，并提供真实的 https 站点地址。
+      BLOG_COOKIE_SECURE: ${BLOG_COOKIE_SECURE:-false}
       # Public origin used to validate browser write requests and as the
-      # fallback for robots.txt / sitemap.xml. Override for production HTTPS.
+      # fallback for robots.txt / sitemap.xml. Production must set a real
+      # https origin together with BLOG_COOKIE_SECURE=true; an https origin
+      # with insecure cookies is refused at startup.
       BLOG_PUBLIC_ORIGIN: ${BLOG_PUBLIC_ORIGIN:-http://127.0.0.1:11190}
       # Optional canonical public address. The admin site URL takes precedence
       # when it is set, so leave this empty unless you need an ops override.

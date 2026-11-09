@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: '1.25.x'
           cache: true
       - uses: actions/setup-node@v4
         with:
@@ -23,12 +23,16 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci --prefix frontend --no-audit --no-fund
+      - run: npm audit --prefix frontend --audit-level=high
       - run: npm --prefix frontend run typecheck
       - run: npm --prefix frontend run format:check
       - run: npm --prefix frontend run test:i18n
       - run: npm --prefix frontend run build
       - run: go test -count=1 ./...
+      - run: go test -race -count=1 ./...
       - run: go vet ./...
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+      - run: "$(go env GOPATH)/bin/govulncheck" ./...
       - run: docker build --pull=false -t iblog:release-check .
       - name: Docker end-to-end and backup/restore check
         run: node scripts/e2e-docker.mjs iblog:release-check
