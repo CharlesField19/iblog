@@ -130,6 +130,28 @@ func TestRecordArticleViewEndpoint(t *testing.T) {
 	}
 }
 
+func TestRecordArticleViewDeduplicatesClientWindow(t *testing.T) {
+	s := testServer(t)
+	insertSSRArticle(t, s.db, "view-dedup", "View dedup", "published")
+	h := s.routes()
+	for i := 0; i < 2; i++ {
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/articles/view-dedup/view", nil)
+		r.Header.Set("User-Agent", "dedup-test")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("view status=%d", w.Code)
+		}
+	}
+	if err := s.flushViews(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var views int
+	if err := s.db.QueryRow("SELECT views FROM articles WHERE slug='view-dedup'").Scan(&views); err != nil || views != 1 {
+		t.Fatalf("views=%d err=%v", views, err)
+	}
+}
+
 func TestSemanticSlugKeepsAliasRedirectCanonical(t *testing.T) {
 	s := testServer(t)
 	h := s.routes()

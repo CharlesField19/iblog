@@ -98,6 +98,9 @@ const messages = {
       back: '返回',
       seeOtherArticles: '查看其他文章',
       backToTop: '返回顶部',
+      notFoundTitle: '页面不存在',
+      notFoundDescription: '你访问的页面不存在或已被移除。',
+      returnHome: '返回首页',
     },
     admin: {
       nav: {
@@ -423,6 +426,9 @@ const messages = {
       back: 'Back',
       seeOtherArticles: 'Browse other articles',
       backToTop: 'Back to top',
+      notFoundTitle: 'Page not found',
+      notFoundDescription: 'The page may have been moved or no longer exists.',
+      returnHome: 'Return home',
     },
     admin: {
       nav: {

@@ -7,6 +7,7 @@ import ArticlesView from './views/ArticlesView.vue'
 import PostView from './views/PostView.vue'
 import AboutView from './views/AboutView.vue'
 import FriendsView from './views/FriendsView.vue'
+import NotFoundView from './views/NotFoundView.vue'
 import './styles/tailwind.css'
 
 const router = createRouter({
@@ -18,7 +19,7 @@ const router = createRouter({
     { path: '/articles/:slug', component: PostView },
     { path: '/about', component: AboutView },
     { path: '/friends', component: FriendsView },
-    { path: '/:pathMatch(.*)*', redirect: '/' },
+    { path: '/:pathMatch(.*)*', component: NotFoundView },
   ],
 })
 

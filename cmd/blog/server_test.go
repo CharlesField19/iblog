@@ -226,6 +226,32 @@ func TestLoginRejectsBadPassword(t *testing.T) {
 	}
 }
 
+func TestLoginRateLimitUsesTrustedProxyClientIP(t *testing.T) {
+	s := testServer(t)
+	t.Setenv("BLOG_TRUST_PROXY", "true")
+	h := s.routes()
+	request := func(ip string) int {
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"wrong","password":"wrong-password"}`))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("X-Real-IP", ip)
+		r.RemoteAddr = "172.20.0.2:43100"
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	for range 5 {
+		if got := request("203.0.113.10"); got != http.StatusUnauthorized {
+			t.Fatalf("first client attempt status=%d", got)
+		}
+	}
+	if got := request("203.0.113.10"); got != http.StatusTooManyRequests {
+		t.Fatalf("blocked client status=%d", got)
+	}
+	if got := request("203.0.113.11"); got != http.StatusUnauthorized {
+		t.Fatalf("different proxy client was affected: status=%d", got)
+	}
+}
+
 func TestRequestCorrelationAndAuditLogsDoNotIncludeRequestBodies(t *testing.T) {
 	var output bytes.Buffer
 	previous := log.Writer()
@@ -456,8 +482,12 @@ func TestViewCountsAreBufferedAndFlushedTogether(t *testing.T) {
 		if code, body := call(t, s.routes(), http.MethodGet, "/api/v1/articles/views-test", nil, ""); code != http.StatusOK {
 			t.Fatalf("read article: %d %v", code, body)
 		}
-		if code, body := call(t, s.routes(), http.MethodPost, "/api/v1/articles/views-test/view", nil, ""); code != http.StatusNoContent {
-			t.Fatalf("record view: %d %v", code, body)
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/articles/views-test/view", nil)
+		request.Header.Set("User-Agent", fmt.Sprintf("test-client-%d", i))
+		s.routes().ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusNoContent {
+			t.Fatalf("record view: %d body=%s", recorder.Code, recorder.Body.String())
 		}
 	}
 	var before int

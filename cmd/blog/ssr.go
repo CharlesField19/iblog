@@ -45,6 +45,13 @@ type ssrPage struct {
 	RSSPath     string
 }
 
+type ssrSettingsCache struct {
+	rows      map[string]string
+	expiresAt time.Time
+}
+
+const ssrSettingsCacheTTL = 30 * time.Second
+
 type ssrSite struct {
 	Name        string
 	TitlePrefix string
@@ -186,16 +193,11 @@ func (s *server) ssrSettings(r *http.Request) (ssrSite, map[string]string, ssrAb
 	site := ssrSite{Name: "iBlog", TitlePrefix: "Chenghao's", TitleAccent: "Blog", Subtitle: "Code · Life · Ideas", FooterName: "Chenghao", FooterText: "用代码与热爱搭建"}
 	contacts := map[string]string{"email": "", "github": "", "x": "", "telegram": ""}
 	about := ssrAbout{Intro: "记录技术、生活与想法。", Bio: "用代码与热爱搭建。", Skills: []string{"Coding", "Photography", "Writing"}, Timeline: []ssrTimeline{{Year: "2024", Title: "持续记录", Description: "整理经验并分享有用的发现。"}, {Year: "2020", Title: "开始写作", Description: "从技术、生活与想法开始记录。"}}, ContactNote: "欢迎通过社交媒体联系我。"}
-	rows, err := s.db.QueryContext(r.Context(), "SELECT setting_key,value_json FROM site_settings")
+	settings, err := s.ssrSettingsRows(r)
 	if err != nil {
 		return site, contacts, about, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var key, raw string
-		if err := rows.Scan(&key, &raw); err != nil {
-			return site, contacts, about, err
-		}
+	for key, raw := range settings {
 		switch key {
 		case "site":
 			var value struct {
@@ -252,13 +254,56 @@ func (s *server) ssrSettings(r *http.Request) (ssrSite, map[string]string, ssrAb
 			}
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return site, contacts, about, err
-	}
 	if strings.TrimSpace(site.Author) == "" {
 		site.Author = site.FooterName
 	}
 	return site, contacts, about, nil
+}
+
+func (s *server) ssrSettingsRows(r *http.Request) (map[string]string, error) {
+	now := time.Now()
+	s.settingsCacheMu.Lock()
+	cached := s.settingsCache
+	if cached.rows != nil && now.Before(cached.expiresAt) {
+		rows := make(map[string]string, len(cached.rows))
+		for key, value := range cached.rows {
+			rows[key] = value
+		}
+		s.settingsCacheMu.Unlock()
+		return rows, nil
+	}
+	s.settingsCacheMu.Unlock()
+
+	rows, err := s.db.QueryContext(r.Context(), "SELECT setting_key,value_json FROM site_settings")
+	if err != nil {
+		return nil, err
+	}
+	settings := make(map[string]string)
+	for rows.Next() {
+		var key, value string
+		if err := rows.Scan(&key, &value); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		settings[key] = value
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	s.settingsCacheMu.Lock()
+	s.settingsCache = ssrSettingsCache{rows: settings, expiresAt: time.Now().Add(ssrSettingsCacheTTL)}
+	s.settingsCacheMu.Unlock()
+	return settings, nil
+}
+
+func (s *server) invalidateSSRSettingsCache() {
+	s.settingsCacheMu.Lock()
+	s.settingsCache = ssrSettingsCache{}
+	s.settingsCacheMu.Unlock()
 }
 
 func (s *server) basePage(r *http.Request, kind, title, description, path string) (ssrPage, error) {
@@ -513,6 +558,14 @@ func (s *server) articleJSONLD(page ssrPage) template.JS {
 
 func (s *server) feedXML(w http.ResponseWriter, r *http.Request) {
 	base := s.canonicalBaseURL(r)
+	cacheKey := "feed:" + base
+	if body, ok := s.getPublicDocCache(cacheKey); ok {
+		w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+		return
+	}
+	generation := s.publicDocCacheVersion()
 	site, _, _, err := s.ssrSettings(r)
 	if err != nil {
 		fail(w, 500, "internal", "服务器内部错误")
@@ -523,9 +576,8 @@ func (s *server) feedXML(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal", "服务器内部错误")
 		return
 	}
-	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>%s</title><link>%s/</link><description>%s</description>`, template.HTMLEscapeString(site.Name), template.HTMLEscapeString(base), template.HTMLEscapeString(site.Subtitle))
+	var output strings.Builder
+	fmt.Fprintf(&output, `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>%s</title><link>%s/</link><description>%s</description>`, template.HTMLEscapeString(site.Name), template.HTMLEscapeString(base), template.HTMLEscapeString(site.Subtitle))
 	for _, a := range articles {
 		stamp := a.UpdatedAt
 		if a.PublishedAt != nil {
@@ -535,7 +587,12 @@ func (s *server) feedXML(w http.ResponseWriter, r *http.Request) {
 			stamp = parsed.UTC().Format(time.RFC1123Z)
 		}
 		link := base + "/articles/" + url.PathEscape(a.Slug)
-		fmt.Fprintf(w, `<item><title>%s</title><link>%s</link><guid>%s</guid><pubDate>%s</pubDate><description>%s</description></item>`, template.HTMLEscapeString(a.Title), template.HTMLEscapeString(link), template.HTMLEscapeString(link), template.HTMLEscapeString(stamp), template.HTMLEscapeString(a.Summary))
+		fmt.Fprintf(&output, `<item><title>%s</title><link>%s</link><guid>%s</guid><pubDate>%s</pubDate><description>%s</description></item>`, template.HTMLEscapeString(a.Title), template.HTMLEscapeString(link), template.HTMLEscapeString(link), template.HTMLEscapeString(stamp), template.HTMLEscapeString(a.Summary))
 	}
-	fmt.Fprint(w, "</channel></rss>")
+	fmt.Fprint(&output, "</channel></rss>")
+	body := []byte(output.String())
+	s.setPublicDocCache(cacheKey, body, generation)
+	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 }

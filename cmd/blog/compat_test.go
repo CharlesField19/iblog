@@ -396,8 +396,8 @@ func TestCreateArticleRollbackWhenTagFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, _ := call(t, s.routes(), "POST", "/api/v1/admin/articles", map[string]any{"title": "Atomic", "slug": "atomic", "tags": []string{"bad"}}, token)
-	if code != 400 {
-		t.Fatalf("expected tag validation failure, got %d", code)
+	if code != 500 {
+		t.Fatalf("expected database failure, got %d", code)
 	}
 	var n int
 	if err := s.db.QueryRow("SELECT COUNT(*) FROM articles WHERE slug='atomic'").Scan(&n); err != nil || n != 0 {

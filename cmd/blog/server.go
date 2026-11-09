@@ -35,6 +35,13 @@ type server struct {
 	searchCacheMu         sync.Mutex
 	searchCache           map[string]searchCacheEntry
 	searchCacheGeneration uint64
+	viewDedupMu           sync.Mutex
+	viewDedup             map[string]time.Time
+	settingsCacheMu       sync.Mutex
+	settingsCache         ssrSettingsCache
+	publicDocCacheMu      sync.Mutex
+	publicDocCache        map[string]publicDocCacheEntry
+	publicDocGeneration   uint64
 }
 type searchCacheEntry struct {
 	body      []byte
@@ -43,6 +50,10 @@ type searchCacheEntry struct {
 type loginFailure struct {
 	count   int
 	expires time.Time
+}
+type publicDocCacheEntry struct {
+	body      []byte
+	expiresAt time.Time
 }
 type apiError struct {
 	Code string `json:"code"`
@@ -66,6 +77,8 @@ const (
 	maxContentLen       = 200000
 	maxTagLen           = 24
 	maxArticleTags      = 10
+	viewDedupWindow     = 30 * time.Minute
+	viewDedupLimit      = 10000
 )
 
 type article struct {
@@ -160,6 +173,14 @@ func (s *server) robots(w http.ResponseWriter, r *http.Request) {
 }
 func (s *server) sitemap(w http.ResponseWriter, r *http.Request) {
 	base := s.canonicalBaseURL(r)
+	key := "sitemap:" + base
+	if body, ok := s.getPublicDocCache(key); ok {
+		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+		return
+	}
+	generation := s.publicDocCacheVersion()
 	rows, err := s.db.QueryContext(r.Context(), "SELECT slug,updated_at FROM articles WHERE status='published' ORDER BY updated_at DESC")
 	if err != nil {
 		fail(w, 500, "internal", "服务器内部错误")
@@ -180,16 +201,67 @@ func (s *server) sitemap(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal", "服务器内部错误")
 		return
 	}
-	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-	w.WriteHeader(200)
-	fmt.Fprint(w, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">")
+	var output bytes.Buffer
+	fmt.Fprint(&output, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">")
 	for _, path := range []string{"/", "/articles", "/about", "/friends"} {
-		fmt.Fprintf(w, "<url><loc>%s</loc></url>", html.EscapeString(base+path))
+		fmt.Fprintf(&output, "<url><loc>%s</loc></url>", html.EscapeString(base+path))
 	}
 	for _, item := range entries {
-		fmt.Fprintf(w, "<url><loc>%s/articles/%s</loc><lastmod>%s</lastmod></url>", html.EscapeString(base), html.EscapeString(url.PathEscape(item.slug)), html.EscapeString(item.updated))
+		fmt.Fprintf(&output, "<url><loc>%s/articles/%s</loc><lastmod>%s</lastmod></url>", html.EscapeString(base), html.EscapeString(url.PathEscape(item.slug)), html.EscapeString(item.updated))
 	}
-	fmt.Fprint(w, "</urlset>")
+	fmt.Fprint(&output, "</urlset>")
+	body := output.Bytes()
+	s.setPublicDocCache(key, body, generation)
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+}
+
+const publicDocCacheTTL = 5 * time.Minute
+
+func (s *server) getPublicDocCache(key string) ([]byte, bool) {
+	s.publicDocCacheMu.Lock()
+	defer s.publicDocCacheMu.Unlock()
+	entry, ok := s.publicDocCache[key]
+	if !ok || time.Now().After(entry.expiresAt) {
+		if ok {
+			delete(s.publicDocCache, key)
+		}
+		return nil, false
+	}
+	return append([]byte(nil), entry.body...), true
+}
+
+func (s *server) publicDocCacheVersion() uint64 {
+	s.publicDocCacheMu.Lock()
+	defer s.publicDocCacheMu.Unlock()
+	return s.publicDocGeneration
+}
+
+func (s *server) setPublicDocCache(key string, body []byte, generation uint64) {
+	s.publicDocCacheMu.Lock()
+	defer s.publicDocCacheMu.Unlock()
+	if generation != s.publicDocGeneration {
+		return
+	}
+	if s.publicDocCache == nil {
+		s.publicDocCache = make(map[string]publicDocCacheEntry)
+	}
+	if len(s.publicDocCache) >= 16 {
+		for cachedKey, entry := range s.publicDocCache {
+			if time.Now().After(entry.expiresAt) || len(s.publicDocCache) >= 12 {
+				delete(s.publicDocCache, cachedKey)
+			}
+		}
+	}
+	s.publicDocCache[key] = publicDocCacheEntry{body: append([]byte(nil), body...), expiresAt: time.Now().Add(publicDocCacheTTL)}
+}
+
+func (s *server) invalidatePublicDocCache() {
+	s.publicDocCacheMu.Lock()
+	s.publicDocGeneration++
+	s.publicDocCache = make(map[string]publicDocCacheEntry)
+	s.publicDocCacheMu.Unlock()
 }
 
 func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
@@ -387,6 +459,7 @@ func (s *server) invalidateSearchCache() {
 	s.searchCacheGeneration++
 	s.searchCache = make(map[string]searchCacheEntry)
 	s.searchCacheMu.Unlock()
+	s.invalidatePublicDocCache()
 }
 func pageParams(q url.Values) (int, int, bool) {
 	page, size := 1, 10
@@ -499,8 +572,57 @@ func (s *server) recordArticleView(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "not_found", "文章不存在")
 		return
 	}
-	s.recordView(a.ID)
+	if s.allowArticleView(r, a.ID) {
+		s.recordView(a.ID)
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func clientIP(r *http.Request) string {
+	if trustProxy() {
+		if ip := net.ParseIP(strings.TrimSpace(r.Header.Get("X-Real-IP"))); ip != nil {
+			return ip.String()
+		}
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil {
+		if ip := net.ParseIP(host); ip != nil {
+			return ip.String()
+		}
+	}
+	return r.RemoteAddr
+}
+
+func (s *server) allowArticleView(r *http.Request, articleID int64) bool {
+	key := fmt.Sprintf("%d|%s|%s", articleID, clientIP(r), r.UserAgent())
+	now := time.Now()
+	s.viewDedupMu.Lock()
+	defer s.viewDedupMu.Unlock()
+	if s.viewDedup == nil {
+		s.viewDedup = make(map[string]time.Time)
+	}
+	if seen, ok := s.viewDedup[key]; ok && now.Sub(seen) < viewDedupWindow {
+		return false
+	}
+	if len(s.viewDedup) >= viewDedupLimit {
+		for oldKey, seen := range s.viewDedup {
+			if now.Sub(seen) >= viewDedupWindow {
+				delete(s.viewDedup, oldKey)
+			}
+		}
+	}
+	if len(s.viewDedup) >= viewDedupLimit {
+		var oldestKey string
+		var oldest time.Time
+		for candidate, seen := range s.viewDedup {
+			if oldestKey == "" || seen.Before(oldest) {
+				oldestKey, oldest = candidate, seen
+			}
+		}
+		delete(s.viewDedup, oldestKey)
+	}
+	s.viewDedup[key] = now
+	return true
 }
 func (s *server) recordView(articleID int64) {
 	s.viewMu.Lock()
@@ -734,9 +856,13 @@ func (s *server) createArticle(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
+	}
 	if err = setArticleTags(r, tx, id, in.Tags); err != nil {
-		fail(w, 400, "bad_request", "标签无效")
+		fail(w, 500, "internal", "服务器内部错误")
 		return
 	}
 	if err = tx.Commit(); err != nil {
@@ -910,7 +1036,7 @@ func (s *server) updateArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = setArticleTags(r, tx, old.ID, in.Tags); err != nil {
-		fail(w, 400, "bad_request", "标签无效")
+		fail(w, 500, "internal", "服务器内部错误")
 		return
 	}
 	if err = tx.Commit(); err != nil {
@@ -932,7 +1058,11 @@ func (s *server) deleteArticle(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal", "服务器内部错误")
 		return
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
+	}
 	if n == 0 {
 		fail(w, 404, "not_found", "文章不存在")
 		return
@@ -973,7 +1103,11 @@ func (s *server) batchArticles(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal", "批量操作失败")
 		return
 	}
-	n, _ := result.RowsAffected()
+	n, err := result.RowsAffected()
+	if err != nil {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
+	}
 	s.invalidateSearchCache()
 	writeJSON(w, 200, map[string]any{"affected": n})
 }
@@ -989,20 +1123,36 @@ func (s *server) saveTag(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		res, err := s.db.ExecContext(r.Context(), "INSERT INTO tags(name) VALUES(?)", strings.TrimSpace(in.Name))
 		if err != nil {
-			fail(w, 409, "conflict", "标签已存在")
+			if strings.Contains(strings.ToUpper(err.Error()), "UNIQUE") {
+				fail(w, 409, "conflict", "标签已存在")
+			} else {
+				fail(w, 500, "internal", "服务器内部错误")
+			}
 			return
 		}
-		id, _ := res.LastInsertId()
+		id, err := res.LastInsertId()
+		if err != nil {
+			fail(w, 500, "internal", "服务器内部错误")
+			return
+		}
 		s.invalidateSearchCache()
 		writeJSON(w, 201, map[string]any{"id": id, "name": strings.TrimSpace(in.Name), "count": 0})
 		return
 	}
 	res, err := s.db.ExecContext(r.Context(), "UPDATE tags SET name=? WHERE id=?", strings.TrimSpace(in.Name), r.PathValue("id"))
 	if err != nil {
-		fail(w, 409, "conflict", "标签已存在")
+		if strings.Contains(strings.ToUpper(err.Error()), "UNIQUE") {
+			fail(w, 409, "conflict", "标签已存在")
+		} else {
+			fail(w, 500, "internal", "服务器内部错误")
+		}
 		return
 	}
-	changed, _ := res.RowsAffected()
+	changed, err := res.RowsAffected()
+	if err != nil {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
+	}
 	if changed == 0 {
 		fail(w, 404, "not_found", "标签不存在")
 		return
@@ -1022,7 +1172,11 @@ func (s *server) deleteTag(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal", "服务器内部错误")
 		return
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
+	}
 	if n == 0 {
 		fail(w, 404, "not_found", "标签不存在")
 		return
@@ -1118,6 +1272,8 @@ func (s *server) saveSetting(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal", "服务器内部错误")
 		return
 	}
+	s.invalidateSSRSettingsCache()
+	s.invalidatePublicDocCache()
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
@@ -1218,10 +1374,7 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "bad_request", "用户名和密码不能为空")
 		return
 	}
-	ip, _, splitErr := net.SplitHostPort(r.RemoteAddr)
-	if splitErr != nil {
-		ip = r.RemoteAddr
-	}
+	ip := clientIP(r)
 	if s.loginBlocked(ip) {
 		fail(w, 429, "rate_limited", "登录尝试过于频繁，请稍后再试")
 		return

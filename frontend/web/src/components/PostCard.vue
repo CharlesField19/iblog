@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { ArticleSummary } from '../../../shared/contracts'
+import { useI18n } from 'vue-i18n'
 defineProps<{ post: ArticleSummary }>()
+const { locale } = useI18n()
 function formatDate(value?: string | null) {
   if (!value) return ''
-  return new Intl.DateTimeFormat('zh-CN', {
+  return new Intl.DateTimeFormat(locale.value, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
