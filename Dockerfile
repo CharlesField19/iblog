@@ -5,7 +5,7 @@ RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run typecheck && npm run test:i18n && npm run build
 
-FROM golang:1.23-alpine AS backend
+FROM golang:1.25-alpine AS backend
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -17,7 +17,7 @@ RUN CGO_ENABLED=0 go test -count=1 ./... \
     && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/blog ./cmd/blog
 
 FROM alpine:3.20
-LABEL org.opencontainers.image.version="1.1.2"
+LABEL org.opencontainers.image.version="1.1.3"
 RUN apk add --no-cache ca-certificates tzdata wget \
     && adduser -D -H -u 10001 blog \
     && mkdir -p /data /app/static/web /app/static/admin \
