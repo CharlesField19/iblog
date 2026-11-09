@@ -5,7 +5,7 @@ RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run typecheck && npm run test:i18n && npm run build
 
-FROM golang:1.25-alpine AS backend
+FROM golang:1.26-alpine AS backend
 WORKDIR /src
 ENV GOMAXPROCS=1
 COPY go.mod go.sum ./
