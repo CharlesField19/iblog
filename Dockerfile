@@ -18,7 +18,7 @@ RUN CGO_ENABLED=0 go test -count=1 ./... \
     && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/blog ./cmd/blog
 
 FROM alpine:3.20
-LABEL org.opencontainers.image.version="1.1.5"
+LABEL org.opencontainers.image.version="1.1.6"
 RUN apk add --no-cache ca-certificates tzdata wget \
     && adduser -D -H -u 10001 blog \
     && mkdir -p /data /app/static/web /app/static/admin \

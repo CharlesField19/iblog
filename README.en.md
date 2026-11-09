@@ -21,7 +21,7 @@ docker compose pull
 docker compose up -d
 ```
 
-Compose defaults to `latest`, which pulls the most recently published image. To pin a version, change `:latest` in the `image` field to a release tag such as `:v1.1.5`. Upgrades and rollbacks then require changing that one line. There is no separate root `.env` version variable.
+Compose defaults to `latest`, which pulls the most recently published image. To pin a version, change `:latest` in the `image` field to a release tag such as `:v1.1.6`. Upgrades and rollbacks then require changing that one line. There is no separate root `.env` version variable.
 
 The container binds to host `127.0.0.1:11190` by default; the admin console is available at `/admin/`. The defaults (`BLOG_COOKIE_SECURE=false` with `http://127.0.0.1:11190`) are a local HTTP preview and work with `docker compose up -d` as shipped. For production, set `BLOG_PUBLIC_ORIGIN=https://your-domain`, set `BLOG_COOKIE_SECURE=true`, and serve through an HTTPS reverse proxy:
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { errorMessage } from '../../../shared/i18n'
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getPublicData } from '../../../shared/publicData'
 import type { ArticleSummary, PageResult, PublicSettings } from '../../../shared/contracts'
@@ -31,6 +31,8 @@ const site = ref<HomeSite>({
 })
 const loading = ref(!initial)
 const error = ref('')
+const cueHidden = ref(false)
+const latestEl = ref<HTMLElement | null>(null)
 const social = [
   {
     key: 'github',
@@ -73,8 +75,34 @@ async function load() {
     loading.value = false
   }
 }
+function syncCue() {
+  cueHidden.value = window.scrollY > 40
+}
+
+function scrollToLatest(event: MouseEvent) {
+  const target = latestEl.value
+  if (!target) return
+  event.preventDefault()
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  target.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+  // Keep the address bar clean so a reload starts from the hero again.
+  history.replaceState(null, '', window.location.pathname + window.location.search)
+}
+
 onMounted(() => {
+  document.documentElement.classList.add('home-snap')
+  window.addEventListener('scroll', syncCue, { passive: true })
+  syncCue()
+  if (window.location.hash) {
+    history.replaceState(null, '', window.location.pathname + window.location.search)
+    window.scrollTo(0, 0)
+  }
   if (!initial) load()
+})
+
+onBeforeUnmount(() => {
+  document.documentElement.classList.remove('home-snap')
+  window.removeEventListener('scroll', syncCue)
 })
 </script>
 
@@ -105,13 +133,15 @@ onMounted(() => {
         ></a>
       </div>
     </div>
-    <a class="hero-scroll-cue" href="#latest-articles" :aria-label="t('web.scrollToLatest')">
-      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none">
-        <path d="M12 4v15m-6-6 6 6 6-6" />
-      </svg>
-    </a>
+    <a
+      class="hero-scroll-cue"
+      :class="{ 'is-hidden': cueHidden }"
+      href="#latest-articles"
+      :aria-label="t('web.scrollToLatest')"
+      @click="scrollToLatest"
+    ></a>
   </section>
-  <section id="latest-articles" class="section" v-reveal>
+  <section id="latest-articles" ref="latestEl" class="section" v-reveal>
     <div class="page-container article-list-container">
       <div class="section-head">
         <h2 class="section-title">{{ t('web.latest') }}</h2>

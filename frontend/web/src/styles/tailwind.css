@@ -44,7 +44,7 @@
     @apply mb-5 flex items-baseline justify-between gap-4;
   }
   .profile {
-    @apply relative flex min-h-[calc(100svh-var(--nav-h))] items-center justify-center pt-[var(--nav-h)] pb-20 text-center;
+    @apply relative flex min-h-[100svh] items-center justify-center pt-[var(--nav-h)] pb-20 text-center;
   }
   .profile h1 {
     @apply mb-[18px] text-[clamp(46px,9vw,80px)] leading-[1.04] font-bold tracking-[-0.045em] text-balance;
@@ -76,22 +76,34 @@
   .social-icons svg.social-icon-x {
     @apply fill-current stroke-none;
   }
+  /* 视觉是一条约 32x2 的细线，命中区仍保持 44x44。 */
   .hero-scroll-cue {
-    @apply absolute bottom-7 left-1/2 grid size-11 -translate-x-1/2 place-items-center rounded-full text-muted transition-colors;
-    animation: hero-scroll-bob 2.2s ease-in-out infinite;
+    @apply absolute bottom-6 left-1/2 grid size-11 -translate-x-1/2 place-items-center text-muted transition-colors;
+  }
+  .hero-scroll-cue::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 3px;
+    border-radius: 999px;
+    background: currentColor;
+    animation: hero-cue-breathe 2.8s ease-in-out infinite;
+    transition:
+      width 220ms ease,
+      background-color 220ms ease;
   }
   .hero-scroll-cue:hover {
     @apply text-accent;
   }
+  .hero-scroll-cue:hover::before {
+    width: 48px;
+  }
+  .hero-scroll-cue.is-hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
   .hero-scroll-cue:focus-visible {
     @apply outline-2 outline-offset-4 outline-accent;
-  }
-  .hero-scroll-cue svg {
-    @apply size-6;
-    stroke: currentColor;
-    stroke-width: 1.5;
-    stroke-linecap: round;
-    stroke-linejoin: round;
   }
   #latest-articles {
     scroll-margin-top: calc(var(--nav-h) + 1.5rem);
@@ -535,24 +547,40 @@
   }
 }
 
-@keyframes hero-scroll-bob {
+@keyframes hero-cue-breathe {
   0%,
   100% {
-    transform: translate(-50%, 0);
+    opacity: 0.4;
   }
   50% {
-    transform: translate(-50%, 5px);
+    opacity: 1;
   }
 }
 
 html {
   scroll-behavior: smooth;
 }
+/* Home: let the hero and the article list align without forcing a scroll. */
+html.home-snap {
+  scroll-snap-type: y proximity;
+}
+html.home-snap .profile,
+html.home-snap #latest-articles {
+  scroll-snap-align: start;
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .hero-scroll-cue,
-  .ssr-scroll-cue {
+  html.home-snap {
+    scroll-snap-type: none;
+  }
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-scroll-cue::before,
+  .ssr-scroll-cue::before {
     animation: none;
+    opacity: 0.8;
   }
   html {
     scroll-behavior: auto;
@@ -600,7 +628,7 @@ html {
 .ssr-hero {
   position: relative;
   display: grid;
-  min-height: calc(100svh - var(--nav-h));
+  min-height: 100svh;
   align-content: center;
   justify-items: center;
   padding: clamp(5rem, 16vh, 10rem) 0 5rem;
@@ -608,25 +636,23 @@ html {
 }
 .ssr-scroll-cue {
   position: absolute;
-  bottom: 1.75rem;
+  bottom: 1.5rem;
   left: 50%;
   display: grid;
   width: 2.75rem;
   height: 2.75rem;
   place-items: center;
-  border-radius: 50%;
   color: var(--text-2);
   transform: translateX(-50%);
-  animation: hero-scroll-bob 2.2s ease-in-out infinite;
 }
-.ssr-scroll-cue svg {
-  width: 1.5rem;
-  height: 1.5rem;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.ssr-scroll-cue::before {
+  content: '';
+  display: block;
+  width: 40px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: hero-cue-breathe 2.8s ease-in-out infinite;
 }
 #latest-articles {
   scroll-margin-top: calc(var(--nav-h) + 1.5rem);
