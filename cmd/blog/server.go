@@ -716,6 +716,15 @@ func (s *server) createArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+	var taken bool
+	if err = tx.QueryRowContext(r.Context(), "SELECT EXISTS (SELECT 1 FROM articles WHERE slug=? UNION ALL SELECT 1 FROM article_slug_aliases WHERE slug=?)", in.Slug, in.Slug).Scan(&taken); err != nil {
+		fail(w, 500, "internal", "服务器内部错误")
+		return
+	}
+	if taken {
+		fail(w, 409, "conflict", "slug 已存在")
+		return
+	}
 	res, err := tx.ExecContext(r.Context(), "INSERT INTO articles(slug,title,summary,content_md,status,created_at,updated_at,published_at) VALUES(?,?,?,?,?,?,?,?)", in.Slug, in.Title, in.Summary, in.Content, in.Status, t, t, pub)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
@@ -765,11 +774,11 @@ func makeArticleSlug(db *sql.DB, title string) (string, error) {
 		if i > 0 {
 			candidate = fmt.Sprintf("%s-%d", base, i+1)
 		}
-		var count int
-		if err := db.QueryRow("SELECT COUNT(*) FROM articles WHERE slug=? OR EXISTS (SELECT 1 FROM article_slug_aliases WHERE slug=?)", candidate, candidate).Scan(&count); err != nil {
+		var taken bool
+		if err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM articles WHERE slug=? UNION ALL SELECT 1 FROM article_slug_aliases WHERE slug=?)", candidate, candidate).Scan(&taken); err != nil {
 			return "", err
 		}
-		if count == 0 {
+		if !taken {
 			return candidate, nil
 		}
 	}
@@ -869,6 +878,15 @@ func (s *server) updateArticle(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	if old.Slug != in.Slug {
+		var taken bool
+		if err = tx.QueryRowContext(r.Context(), "SELECT EXISTS (SELECT 1 FROM articles WHERE slug=? AND id<>? UNION ALL SELECT 1 FROM article_slug_aliases WHERE slug=?)", in.Slug, old.ID, in.Slug).Scan(&taken); err != nil {
+			fail(w, 500, "internal", "服务器内部错误")
+			return
+		}
+		if taken {
+			fail(w, 409, "conflict", "slug 已存在")
+			return
+		}
 		if _, err = tx.ExecContext(r.Context(), "INSERT OR IGNORE INTO article_slug_aliases(slug,article_id,created_at) VALUES(?,?,?)", old.Slug, old.ID, t); err != nil {
 			fail(w, 500, "internal", "服务器内部错误")
 			return

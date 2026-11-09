@@ -140,6 +140,40 @@ func TestNewArticleWithoutSlugUsesSemanticSlug(t *testing.T) {
 	}
 }
 
+func TestArticleSlugsDoNotReuseAliases(t *testing.T) {
+	s := testServer(t)
+	h := s.routes()
+	token := adminToken(t, s)
+	_, original := call(t, h, http.MethodPost, "/api/v1/admin/articles", map[string]any{
+		"title": "Original", "slug": "legacy-title", "contentMd": "body", "status": "published",
+	}, token)
+	id := int(original["id"].(float64))
+	if _, err := s.db.Exec("INSERT INTO article_slug_aliases(slug,article_id,created_at) VALUES(?,?,?)", "hello-world", id, now()); err != nil {
+		t.Fatal(err)
+	}
+
+	code, created := call(t, h, http.MethodPost, "/api/v1/admin/articles", map[string]any{
+		"title": "Hello World", "contentMd": "body", "status": "draft",
+	}, token)
+	if code != http.StatusCreated || created["slug"] != "hello-world-2" {
+		t.Fatalf("generated slug reused alias: status=%d body=%v", code, created)
+	}
+
+	code, _ = call(t, h, http.MethodPost, "/api/v1/admin/articles", map[string]any{
+		"title": "Explicit alias", "slug": "hello-world", "contentMd": "body", "status": "draft",
+	}, token)
+	if code != http.StatusConflict {
+		t.Fatalf("explicit alias status=%d, want %d", code, http.StatusConflict)
+	}
+
+	code, _ = call(t, h, http.MethodPut, "/api/v1/admin/articles/"+fmt.Sprint(id), map[string]any{
+		"title": "Original", "slug": "hello-world", "contentMd": "body", "status": "published",
+	}, token)
+	if code != http.StatusConflict {
+		t.Fatalf("update to alias status=%d, want %d", code, http.StatusConflict)
+	}
+}
+
 func TestArticleSlugChangeKeepsOldLink(t *testing.T) {
 	s := testServer(t)
 	h := s.routes()
