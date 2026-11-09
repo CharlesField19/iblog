@@ -33,7 +33,7 @@
     @apply mb-5 flex items-baseline justify-between gap-4;
   }
   .profile {
-    @apply pt-[170px] pb-[120px] text-center;
+    @apply flex min-h-[calc(100svh-var(--nav-h))] items-center justify-center pt-[170px] pb-[120px] text-center;
   }
   .profile h1 {
     @apply mb-[18px] text-[clamp(46px,9vw,80px)] leading-[1.04] font-bold tracking-[-0.045em] text-balance;
@@ -43,7 +43,8 @@
     background-image: linear-gradient(92deg, #0a84ff 0%, #5e5ce6 55%, #bf5af2 100%);
   }
   .hero-sub {
-    @apply mb-8 text-xl font-normal tracking-[0.01em] text-muted;
+    @apply mx-auto mb-8 min-w-[12em] text-xl font-normal tracking-[0.01em] text-muted;
+    font-variant-ligatures: none;
   }
   .social-icons {
     @apply mt-5 flex flex-wrap items-center justify-center gap-[18px] capitalize;
@@ -114,7 +115,12 @@
     @apply text-xs text-subtle;
   }
   .filter-tags {
-    @apply my-5 gap-2;
+    @apply my-5 flex-nowrap gap-2 overflow-x-auto pb-1;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  .filter-tags .chip {
+    @apply flex-none;
   }
   .search-box {
     @apply relative flex items-center gap-3 rounded-2xl border border-line bg-surface px-[18px] py-3.5 transition;

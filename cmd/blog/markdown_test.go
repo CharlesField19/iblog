@@ -18,6 +18,20 @@ func TestRenderMarkdownSupportsCommonSyntax(t *testing.T) {
 	}
 }
 
+func TestRenderMarkdownHighlightsAndWrapsCodeSafely(t *testing.T) {
+	html, err := renderMarkdown("```go\nfunc main() { fmt.Println(\\\"a very long line\\\") }\n```")
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := string(html)
+	if !strings.Contains(output, `class="`) {
+		t.Fatalf("code block was not highlighted: %s", output)
+	}
+	if strings.Contains(strings.ToLower(output), "javascript:") || strings.Contains(output, "<script") {
+		t.Fatalf("unsafe content survived: %s", output)
+	}
+}
+
 func TestMarkdownGFMAndDangerousLinkSyntax(t *testing.T) {
 	html, err := renderMarkdown("| A | B |\n|---|---|\n| one | two |\n\n~~removed~~\n\n[bad](javascript:alert%281%29)\n\n![bad](data:text/html;base64,PHNjcmlwdD4=)")
 	if err != nil {

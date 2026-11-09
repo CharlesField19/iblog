@@ -44,10 +44,47 @@
     @apply rounded-md border border-line bg-hover px-1.5 py-0.5 font-mono text-[0.88em];
   }
   :is(.markdown-body, .md-preview) pre {
-    @apply mb-4 overflow-auto rounded-xl border border-line bg-[var(--bg-2)] p-4;
+    @apply mb-4 overflow-x-auto rounded-xl border border-line bg-[var(--bg-2)] p-4;
   }
   :is(.markdown-body, .md-preview) pre code {
     @apply block border-0 bg-transparent p-0 text-[13.5px] leading-[1.65] text-ink;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    tab-size: 2;
+  }
+  :is(.markdown-body, .md-preview) pre code span {
+    color: var(--code-token, inherit);
+  }
+  :is(.markdown-body, .md-preview) pre code .kd,
+  :is(.markdown-body, .md-preview) pre code .k,
+  :is(.markdown-body, .md-preview) pre code .kn {
+    color: var(--code-keyword);
+  }
+  :is(.markdown-body, .md-preview) pre code .s,
+  :is(.markdown-body, .md-preview) pre code .s1,
+  :is(.markdown-body, .md-preview) pre code .s2 {
+    color: var(--code-string);
+  }
+  :is(.markdown-body, .md-preview) pre code .c,
+  :is(.markdown-body, .md-preview) pre code .c1,
+  :is(.markdown-body, .md-preview) pre code .cm {
+    color: var(--code-comment);
+  }
+  :is(.markdown-body, .md-preview) pre code .chroma {
+    background: transparent;
+  }
+  :root[data-theme='dark'] :is(.markdown-body, .md-preview) pre code {
+    --code-token: #d6deeb;
+    --code-keyword: #82aaff;
+    --code-string: #c3e88d;
+    --code-comment: #7f8c98;
+  }
+  :root:not([data-theme='dark']) :is(.markdown-body, .md-preview) pre code {
+    --code-token: #24324a;
+    --code-keyword: #005cc5;
+    --code-string: #22863a;
+    --code-comment: #6a737d;
   }
   :is(.markdown-body, .md-preview) img {
     @apply mb-4 max-w-full rounded-xl;

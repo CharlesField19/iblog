@@ -185,6 +185,13 @@
   .card {
     @apply rounded-panel border border-line bg-surface px-[26px] py-6 shadow-soft;
   }
+  @supports (corner-shape: squircle) {
+    .card,
+    .search-box,
+    :is(.markdown-body, .md-preview) pre {
+      corner-shape: squircle;
+    }
+  }
   .muted {
     @apply text-muted;
   }

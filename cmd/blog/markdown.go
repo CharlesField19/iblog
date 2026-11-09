@@ -5,14 +5,22 @@ import (
 	"html/template"
 	"strings"
 
+	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
+	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 )
 
 var markdownParser = goldmark.New(
-	goldmark.WithExtensions(extension.GFM),
+	goldmark.WithExtensions(
+		extension.GFM,
+		highlighting.NewHighlighting(
+			highlighting.WithStyle("github"),
+			highlighting.WithFormatOptions(chromahtml.WithClasses(true)),
+		),
+	),
 	goldmark.WithParserOptions(parser.WithAutoHeadingID()),
 )
 
@@ -20,6 +28,7 @@ var markdownPolicy = func() *bluemonday.Policy {
 	policy := bluemonday.NewPolicy()
 	policy.AllowElements("p", "br", "hr", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "code", "ul", "ol", "li", "dl", "dt", "dd", "table", "thead", "tbody", "tr", "th", "td", "em", "strong", "del", "s", "a", "img")
 	policy.AllowAttrs("href", "title", "target", "rel").OnElements("a")
+	policy.AllowAttrs("class").OnElements("span")
 	policy.AllowAttrs("src", "alt", "title", "width", "height").OnElements("img")
 	policy.AllowURLSchemes("http", "https", "mailto")
 	policy.RequireNoFollowOnLinks(true)
