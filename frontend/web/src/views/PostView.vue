@@ -6,6 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { request } from '../../../shared/api'
 import type { ArticleDetail } from '../../../shared/contracts'
 import { takeInitialData } from '../../../shared/initialData'
+import LoadingState from '../../../shared/LoadingState.vue'
 import vReveal from '../directives/reveal'
 
 const route = useRoute()
@@ -181,7 +182,7 @@ onBeforeUnmount(() => {
   <section class="section post-page" v-reveal>
     <div class="page-container">
       <RouterLink class="back-link btn" to="/articles">{{ t('web.back') }}</RouterLink>
-      <p v-if="loading">{{ t('web.loadingArticles') }}</p>
+      <LoadingState v-if="loading" variant="page" :label="t('web.loadingArticles')" />
       <div v-else-if="error" role="alert">
         <p>{{ error }}</p>
         <RouterLink to="/articles">{{ t('web.seeOtherArticles') }}</RouterLink>

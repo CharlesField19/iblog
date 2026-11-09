@@ -8,6 +8,7 @@ import { adminRequest } from '../api'
 import { useToast, useConfirm } from '../injections'
 import { ApiError } from '../../../shared/api'
 import type { Tag, ArticleDetail } from '../../../shared/contracts'
+import LoadingState from '../../../shared/LoadingState.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -271,17 +272,20 @@ onBeforeUnmount(() => {
       <div class="head-actions">
         <RouterLink class="btn btn-secondary" to="/">{{ t('web.back') }}</RouterLink
         ><button class="btn" :disabled="saving || loading" @click="save">
-          {{
+          <LoadingState v-if="saving" variant="inline" />
+          <span>{{
             saving
               ? t('admin.common.saving')
               : status === 'published'
                 ? t('admin.editor.savePublish')
                 : t('admin.editor.saveDraft')
-          }}
+          }}</span>
         </button>
       </div>
     </div>
-    <div v-if="loading" class="card skeleton sk-line">{{ t('admin.common.loading') }}</div>
+    <div v-if="loading" class="card">
+      <LoadingState variant="card" :label="t('admin.common.loading')" />
+    </div>
     <div v-else-if="error" class="card error-card" role="alert">{{ error }}</div>
     <form v-else class="editor-form" @submit.prevent="save">
       <section class="card form-card">

@@ -8,6 +8,7 @@ import { useToast, useConfirm } from '../injections'
 import { saveSession } from '../session'
 import { request } from '../../../shared/api'
 import type { SessionResponse } from '../../../shared/contracts'
+import LoadingState from '../../../shared/LoadingState.vue'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -67,7 +68,7 @@ async function submit() {
     <section class="login-card">
       <h1>{{ setupRequired ? t('admin.login.setup') : t('admin.login.title') }}</h1>
       <p v-if="setupRequired" class="setup-copy">{{ t('admin.login.firstUse') }}</p>
-      <p v-if="checking" class="setup-copy" role="status">{{ t('admin.login.checking') }}</p>
+      <LoadingState v-if="checking" variant="card" :label="t('admin.login.checking')" />
       <form v-else @submit.prevent="submit">
         <div class="field">
           <label for="username">{{ t('admin.login.username') }}</label
@@ -100,7 +101,8 @@ async function submit() {
         </div>
         <p v-if="error" class="login-error" role="alert">{{ error }}</p>
         <button class="btn login-btn" :disabled="loading">
-          {{
+          <LoadingState v-if="loading" variant="inline" />
+          <span>{{
             loading
               ? setupRequired
                 ? t('admin.login.creating')
@@ -108,7 +110,7 @@ async function submit() {
               : setupRequired
                 ? t('admin.login.createAccount')
                 : t('admin.login.signIn')
-          }}
+          }}</span>
         </button>
       </form>
     </section>

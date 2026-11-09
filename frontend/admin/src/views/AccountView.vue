@@ -6,6 +6,7 @@ import { adminRequest } from '../api'
 import type { SessionResponse } from '../../../shared/contracts'
 import { useToast, useConfirm } from '../injections'
 import { saveSession } from '../session'
+import LoadingState from '../../../shared/LoadingState.vue'
 
 const toast = useToast()
 const { t } = useI18n()
@@ -85,7 +86,10 @@ async function changePassword() {
           </div>
           <p class="section-hint">{{ t('admin.account.usernameHint') }}</p>
           <button class="btn" :disabled="savingName">
-            {{ savingName ? t('admin.common.saving') : t('admin.account.saveUsername') }}
+            <LoadingState v-if="savingName" variant="inline" />
+            <span>{{
+              savingName ? t('admin.common.saving') : t('admin.account.saveUsername')
+            }}</span>
           </button>
         </form>
       </section>
@@ -125,7 +129,10 @@ async function changePassword() {
             />
           </div>
           <button class="btn" :disabled="savingPassword">
-            {{ savingPassword ? t('admin.common.saving') : t('admin.account.savePassword') }}
+            <LoadingState v-if="savingPassword" variant="inline" />
+            <span>{{
+              savingPassword ? t('admin.common.saving') : t('admin.account.savePassword')
+            }}</span>
           </button>
         </form>
       </section>

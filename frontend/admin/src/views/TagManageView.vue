@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { adminRequest } from '../api'
 import type { Tag } from '../../../shared/contracts'
 import { useToast, useConfirm } from '../injections'
+import LoadingState from '../../../shared/LoadingState.vue'
 
 const toast = useToast()
 const confirmAction = useConfirm()
@@ -112,7 +113,9 @@ async function remove(item: Tag) {
     <p v-if="error" class="card error-card" role="alert">
       {{ error }} <button class="link-btn" @click="load">{{ t('admin.common.retry') }}</button>
     </p>
-    <div v-else-if="loading" class="card skeleton">{{ t('admin.common.loading') }}</div>
+    <div v-else-if="loading" class="card">
+      <LoadingState variant="card" :label="t('admin.common.loading')" />
+    </div>
     <div v-else-if="!items.length" class="card empty-state">{{ t('admin.tags.empty') }}</div>
     <div v-else class="stack">
       <section v-for="item in items" :key="item.id" class="card admin-row tag-row">

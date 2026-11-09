@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { adminRequest } from '../api'
 import type { AboutData, AdminSettings } from '../../../shared/contracts'
 import { useToast, useConfirm } from '../injections'
+import LoadingState from '../../../shared/LoadingState.vue'
 
 const toast = useToast()
 const { t } = useI18n()
@@ -74,13 +75,16 @@ async function save() {
     <div class="list-head">
       <h1>{{ t('admin.about.title') }}</h1>
       <button class="btn" :disabled="saving || loading" @click="save">
-        {{ saving ? t('admin.common.saving') : t('admin.common.save') }}
+        <LoadingState v-if="saving" variant="inline" />
+        <span>{{ saving ? t('admin.common.saving') : t('admin.common.save') }}</span>
       </button>
     </div>
     <p v-if="error" class="card error-card" role="alert">
       {{ error }} <button class="link-btn" @click="load">{{ t('admin.common.retry') }}</button>
     </p>
-    <div v-else-if="loading" class="card skeleton">{{ t('admin.common.loading') }}</div>
+    <div v-else-if="loading" class="card">
+      <LoadingState variant="card" :label="t('admin.common.loading')" />
+    </div>
     <div v-else class="stack">
       <section class="card section-card">
         <h2 class="section-title">{{ t('admin.about.intro') }}</h2>

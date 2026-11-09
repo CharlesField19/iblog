@@ -8,6 +8,7 @@ import type { ArticleSummary, PublicTag, PageResult } from '../../../shared/cont
 import { takeInitialData } from '../../../shared/initialData'
 import PostCard from '../components/PostCard.vue'
 import PostCardSkeleton from '../components/PostCardSkeleton.vue'
+import LoadingState from '../../../shared/LoadingState.vue'
 import vReveal from '../directives/reveal'
 
 const route = useRoute()
@@ -168,7 +169,9 @@ onBeforeUnmount(() => {
           :disabled="loading"
           @click="load({ append: true })"
         >
-          {{ loading ? t('web.loadingMore') : t('web.loadMore') }}
+          <LoadingState v-if="loading" variant="inline" /><span>{{
+            loading ? t('web.loadingMore') : t('web.loadMore')
+          }}</span>
         </button>
       </div>
     </div>
