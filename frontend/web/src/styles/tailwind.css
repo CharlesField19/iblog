@@ -33,7 +33,7 @@
     @apply mb-5 flex items-baseline justify-between gap-4;
   }
   .profile {
-    @apply flex min-h-[calc(100svh-var(--nav-h))] items-center justify-center pt-[170px] pb-[120px] text-center;
+    @apply relative flex min-h-[calc(100svh-var(--nav-h))] items-center justify-center pt-[var(--nav-h)] pb-20 text-center;
   }
   .profile h1 {
     @apply mb-[18px] text-[clamp(46px,9vw,80px)] leading-[1.04] font-bold tracking-[-0.045em] text-balance;
@@ -64,6 +64,26 @@
   }
   .social-icons svg.social-icon-x {
     @apply fill-current stroke-none;
+  }
+  .hero-scroll-cue {
+    @apply absolute bottom-7 left-1/2 grid size-11 -translate-x-1/2 place-items-center rounded-full text-muted transition-colors;
+    animation: hero-scroll-bob 2.2s ease-in-out infinite;
+  }
+  .hero-scroll-cue:hover {
+    @apply text-accent;
+  }
+  .hero-scroll-cue:focus-visible {
+    @apply outline-2 outline-offset-4 outline-accent;
+  }
+  .hero-scroll-cue svg {
+    @apply size-6;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  #latest-articles {
+    scroll-margin-top: calc(var(--nav-h) + 1.5rem);
   }
   .card {
     @apply transition duration-300;
@@ -386,7 +406,7 @@
       @apply px-[9px] py-2 text-center text-[13px];
     }
     .profile {
-      @apply pt-[118px] pb-[70px];
+      @apply pt-[var(--nav-h)] pb-16;
     }
     .profile h1 {
       @apply tracking-[-0.035em];
@@ -484,6 +504,30 @@
   }
 }
 
+@keyframes hero-scroll-bob {
+  0%,
+  100% {
+    transform: translate(-50%, 0);
+  }
+  50% {
+    transform: translate(-50%, 5px);
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-scroll-cue,
+  .ssr-scroll-cue {
+    animation: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
+
 @keyframes iblog-skeleton-pulse {
   0%,
   100% {
@@ -523,8 +567,38 @@
   margin: 0 auto;
 }
 .ssr-hero {
+  position: relative;
+  display: grid;
+  min-height: calc(100svh - var(--nav-h));
+  align-content: center;
+  justify-items: center;
   padding: clamp(5rem, 16vh, 10rem) 0 5rem;
   text-align: center;
+}
+.ssr-scroll-cue {
+  position: absolute;
+  bottom: 1.75rem;
+  left: 50%;
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-2);
+  transform: translateX(-50%);
+  animation: hero-scroll-bob 2.2s ease-in-out infinite;
+}
+.ssr-scroll-cue svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#latest-articles {
+  scroll-margin-top: calc(var(--nav-h) + 1.5rem);
 }
 .ssr-hero h1 {
   margin: 0;

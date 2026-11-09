@@ -101,6 +101,7 @@ const messages = {
       notFoundTitle: '页面不存在',
       notFoundDescription: '你访问的页面不存在或已被移除。',
       returnHome: '返回首页',
+      scrollToLatest: '向下查看最新文章',
     },
     admin: {
       nav: {
@@ -429,6 +430,7 @@ const messages = {
       notFoundTitle: 'Page not found',
       notFoundDescription: 'The page may have been moved or no longer exists.',
       returnHome: 'Return home',
+      scrollToLatest: 'Scroll to latest articles',
     },
     admin: {
       nav: {

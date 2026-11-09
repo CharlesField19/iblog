@@ -113,8 +113,8 @@ var ssrTemplate = template.Must(template.New("ssr").Funcs(template.FuncMap{
     {{if .Page.NotFound}}
       <article class="ssr-card"><h1>页面不存在</h1><p>你访问的页面不存在或已被移除。</p><p><a href="/">返回首页</a></p></article>
     {{else if eq .Page.Kind "home"}}
-      <section class="ssr-hero"><h1>{{.Page.Site.TitlePrefix}} <em>{{.Page.Site.TitleAccent}}</em></h1><p>{{.Page.Site.Subtitle}}</p></section>
-      <section class="ssr-section"><h2>最新文章</h2>{{template "article-list" .Page}}</section>
+      <section class="ssr-hero"><h1>{{.Page.Site.TitlePrefix}} <em>{{.Page.Site.TitleAccent}}</em></h1><p>{{.Page.Site.Subtitle}}</p><a class="ssr-scroll-cue" href="#latest-articles" aria-label="向下查看最新文章"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v15m-6-6 6 6 6-6"/></svg></a></section>
+      <section id="latest-articles" class="ssr-section"><h2>最新文章</h2>{{template "article-list" .Page}}</section>
     {{else if eq .Page.Kind "articles"}}
       <section class="ssr-section"><h1>文章</h1><p>{{if .Page.Query}}搜索：{{.Page.Query}}{{else if .Page.Tag}}标签：{{.Page.Tag}}{{else}}记录技术、生活与想法。{{end}}</p>{{template "article-list" .Page}}{{if or .Page.PrevURL .Page.NextURL}}<nav class="ssr-pager" aria-label="文章分页">{{if .Page.PrevURL}}<a href="{{.Page.PrevURL}}">上一页</a>{{end}}<span>第 {{.Page.Page}} 页</span>{{if .Page.NextURL}}<a href="{{.Page.NextURL}}">下一页</a>{{end}}</nav>{{end}}</section>
     {{else if eq .Page.Kind "article"}}

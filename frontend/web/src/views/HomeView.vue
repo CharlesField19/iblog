@@ -104,8 +104,13 @@ onMounted(() => {
         ></a>
       </div>
     </div>
+    <a class="hero-scroll-cue" href="#latest-articles" :aria-label="t('web.scrollToLatest')">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none">
+        <path d="M12 4v15m-6-6 6 6 6-6" />
+      </svg>
+    </a>
   </section>
-  <section class="section">
+  <section id="latest-articles" class="section">
     <div class="page-container article-list-container">
       <div class="section-head">
         <h2 class="section-title">{{ t('web.latest') }}</h2>
