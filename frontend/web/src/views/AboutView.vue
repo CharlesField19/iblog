@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { getPublicData } from '../../../shared/publicData'
 import type { AboutData, PublicSettings } from '../../../shared/contracts'
 import { takeInitialData } from '../../../shared/initialData'
+import vReveal from '../directives/reveal'
 
 const about = ref<AboutData>({
   intro: '',
@@ -113,9 +114,9 @@ onMounted(async () => {
       <p class="sub">{{ about.intro || t('web.aboutDefaultIntro') }}</p>
     </div>
   </section>
-  <section class="section">
+  <section class="section" v-reveal>
     <div class="page-container about-grid">
-      <div class="card">
+      <div class="card" v-reveal>
         <h2 class="section-title">{{ t('web.whoAmI') }}</h2>
         <p class="about-bio">{{ about.bio || t('web.aboutDefaultBio') }}</p>
         <h3 v-if="about.skills?.length" class="about-subtitle">{{ t('web.skills') }}</h3>
@@ -123,7 +124,7 @@ onMounted(async () => {
           <span v-for="skill in about.skills" :key="skill" class="chip">{{ skill }}</span>
         </div>
       </div>
-      <div class="card">
+      <div class="card" v-reveal>
         <h2 class="section-title">{{ t('web.timeline') }}</h2>
         <div class="timeline">
           <article
@@ -140,9 +141,9 @@ onMounted(async () => {
       </div>
     </div>
   </section>
-  <section class="section">
+  <section class="section" v-reveal>
     <div class="page-container">
-      <div class="card contact-card">
+      <div class="card contact-card" v-reveal>
         <h2 class="section-title">{{ t('web.contact') }}</h2>
         <p>{{ about.contactNote || t('web.aboutDefaultContact') }}</p>
         <button

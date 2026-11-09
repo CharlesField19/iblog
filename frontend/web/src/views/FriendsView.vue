@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { getPublicData } from '../../../shared/publicData'
 import type { Friend } from '../../../shared/contracts'
 import { takeInitialData } from '../../../shared/initialData'
+import vReveal from '../directives/reveal'
 import FriendCardSkeleton from '../components/FriendCardSkeleton.vue'
 
 const initial = takeInitialData<{ items?: Friend[] }>('friends')
@@ -46,7 +47,7 @@ onMounted(() => {
       </p>
     </div>
   </section>
-  <section class="section">
+  <section class="section" v-reveal>
     <div class="page-container friends-grid">
       <div v-if="loading" class="friends-grid"><FriendCardSkeleton v-for="i in 3" :key="i" /></div>
       <div v-else-if="error" role="alert">
@@ -57,6 +58,7 @@ onMounted(() => {
         ><a
           v-for="friend in friends"
           :key="friend.id"
+          v-reveal
           class="card friend-card"
           :href="safeHref(friend.url) || undefined"
           :aria-disabled="!safeHref(friend.url) || undefined"

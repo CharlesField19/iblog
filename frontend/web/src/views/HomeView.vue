@@ -7,6 +7,7 @@ import type { ArticleSummary, PageResult, PublicSettings } from '../../../shared
 import { takeInitialData } from '../../../shared/initialData'
 import PostCard from '../components/PostCard.vue'
 import PostCardSkeleton from '../components/PostCardSkeleton.vue'
+import vReveal from '../directives/reveal'
 
 type HomeSite = {
   name: string
@@ -110,7 +111,7 @@ onMounted(() => {
       </svg>
     </a>
   </section>
-  <section id="latest-articles" class="section">
+  <section id="latest-articles" class="section" v-reveal>
     <div class="page-container article-list-container">
       <div class="section-head">
         <h2 class="section-title">{{ t('web.latest') }}</h2>

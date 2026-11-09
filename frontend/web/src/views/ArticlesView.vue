@@ -8,6 +8,7 @@ import type { ArticleSummary, PublicTag, PageResult } from '../../../shared/cont
 import { takeInitialData } from '../../../shared/initialData'
 import PostCard from '../components/PostCard.vue'
 import PostCardSkeleton from '../components/PostCardSkeleton.vue'
+import vReveal from '../directives/reveal'
 
 const route = useRoute()
 const router = useRouter()
@@ -114,7 +115,7 @@ onBeforeUnmount(() => {
       <p class="sub">{{ t('web.articlesIntro') }}</p>
     </div>
   </section>
-  <section class="section">
+  <section class="section" v-reveal>
     <div class="page-container article-list-container">
       <label class="search-box"
         ><span class="search-icon" aria-hidden="true">⌕</span

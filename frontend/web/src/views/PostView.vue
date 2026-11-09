@@ -6,6 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { request } from '../../../shared/api'
 import type { ArticleDetail } from '../../../shared/contracts'
 import { takeInitialData } from '../../../shared/initialData'
+import vReveal from '../directives/reveal'
 
 const route = useRoute()
 const router = useRouter()
@@ -177,7 +178,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="section post-page">
+  <section class="section post-page" v-reveal>
     <div class="page-container">
       <RouterLink class="back-link btn" to="/articles">{{ t('web.back') }}</RouterLink>
       <p v-if="loading">{{ t('web.loadingArticles') }}</p>

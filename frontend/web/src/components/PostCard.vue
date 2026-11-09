@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ArticleSummary } from '../../../shared/contracts'
 import { useI18n } from 'vue-i18n'
+import vReveal from '../directives/reveal'
 defineProps<{ post: ArticleSummary }>()
 const { locale } = useI18n()
 function formatDate(value?: string | null) {
@@ -14,7 +15,7 @@ function formatDate(value?: string | null) {
 </script>
 
 <template>
-  <RouterLink class="card post-card" :to="`/articles/${encodeURIComponent(post.slug)}`">
+  <RouterLink v-reveal class="card post-card" :to="`/articles/${encodeURIComponent(post.slug)}`">
     <div class="post-meta">
       <span v-for="tag in post.tags" :key="tag" class="tag">{{ tag }}</span>
       <time :datetime="post.publishedAt || post.updatedAt">{{

@@ -192,7 +192,13 @@ onBeforeUnmount(() => colorScheme.removeEventListener('change', syncSystemTheme)
       </div>
     </header>
     <a class="skip-link" href="#main-content">{{ $t('skipToContent') }}</a>
-    <main id="main-content" tabindex="-1"><RouterView /></main>
+    <main id="main-content" tabindex="-1">
+      <RouterView v-slot="{ Component }">
+        <Transition name="route" mode="out-in">
+          <div :key="route.path" class="route-page"><component :is="Component" /></div>
+        </Transition>
+      </RouterView>
+    </main>
     <footer class="footer">
       <div class="footer-inner">
         <nav class="footer-links" :aria-label="$t('web.footerNav')">
