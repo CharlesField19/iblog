@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -39,7 +40,48 @@ func testServer(t *testing.T) *server {
 		_ = os.Setenv("BLOG_ADMIN_PASSWORD", oldPassword)
 		_ = os.Setenv("BLOG_JWT_SECRET", oldSecret)
 	})
-	return &server{db: db, webDist: "../../frontend/web/dist", adminDist: "../../frontend/admin/dist", loginFailures: make(map[string]loginFailure)}
+	defaultPath := filepath.Join(t.TempDir(), "default-favicon.ico")
+	if err := os.WriteFile(defaultPath, testFaviconBytes(1), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return &server{db: db, webDist: "../../frontend/web/dist", adminDist: "../../frontend/admin/dist", faviconPath: filepath.Join(t.TempDir(), "favicon.ico"), faviconActivePath: filepath.Join(t.TempDir(), "current", "favicon.ico"), faviconDefaultPath: defaultPath, loginFailures: make(map[string]loginFailure)}
+}
+
+func testFaviconBytes(marker byte) []byte {
+	header := make([]byte, 40)
+	header[0] = 40
+	header[4] = 1  // width
+	header[8] = 2  // doubled ICO height
+	header[12] = 1 // planes
+	header[14] = 32
+	image := append(header, marker, marker, marker, marker, 0, 0, 0, 0)
+	directory := []byte{0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 32, 0}
+	directory = append(directory, byte(len(image)), byte(len(image)>>8), 0, 0, 22, 0, 0, 0)
+	return append(directory, image...)
+}
+
+func uploadFavicon(t *testing.T, h http.Handler, token string, data []byte) (int, map[string]any) {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "favicon.ico")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = part.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err = writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/favicon", &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	request.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+	h.ServeHTTP(recorder, request)
+	var result map[string]any
+	_ = json.NewDecoder(recorder.Body).Decode(&result)
+	return recorder.Code, result
 }
 func call(t *testing.T, h http.Handler, method, path string, body any, token string) (int, map[string]any) {
 	t.Helper()
@@ -416,31 +458,27 @@ func TestCleanInstallAssetsAndCRUD(t *testing.T) {
 	if code, settings = call(t, h, "GET", "/api/v1/admin/settings", nil, token); code != 200 || settings["settings"].(map[string]any)["site"].(map[string]any)["footerText"] != "Made with care" {
 		t.Fatalf("admin site settings: %d %v", code, settings)
 	}
-	icon := "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
-	site["favicon"] = icon
-	if code, _ = call(t, h, "PUT", "/api/v1/admin/settings/site", site, token); code != 200 {
+	icon := testFaviconBytes(9)
+	if code, _ = uploadFavicon(t, h, token, icon); code != 200 {
 		t.Fatalf("save favicon: %d", code)
-	}
-	expected, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
-	if err != nil {
-		t.Fatal(err)
 	}
 	request := httptest.NewRequest("GET", "/favicon.ico", nil)
 	recorder := httptest.NewRecorder()
 	h.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK || recorder.Header().Get("Content-Type") != "image/png" || !bytes.Equal(recorder.Body.Bytes(), expected) {
+	if recorder.Code != http.StatusOK || !bytes.Equal(recorder.Body.Bytes(), icon) {
 		t.Fatalf("favicon: status=%d type=%q bytes=%d", recorder.Code, recorder.Header().Get("Content-Type"), recorder.Body.Len())
 	}
 	request = httptest.NewRequest("GET", "/admin/favicon.ico", nil)
 	recorder = httptest.NewRecorder()
 	h.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK || recorder.Header().Get("Content-Type") != "image/png" || !bytes.Equal(recorder.Body.Bytes(), expected) {
+	if recorder.Code != http.StatusOK || !bytes.Equal(recorder.Body.Bytes(), icon) {
 		t.Fatalf("admin favicon: status=%d type=%q bytes=%d", recorder.Code, recorder.Header().Get("Content-Type"), recorder.Body.Len())
 	}
-	if code, settings = call(t, h, "GET", "/api/v1/settings", nil, ""); code != 200 {
-		t.Fatalf("public settings after favicon: %d", code)
-	} else if _, present := settings["site"].(map[string]any)["favicon"]; present {
-		t.Fatal("public settings exposed favicon data")
+	if code, _ = call(t, h, "POST", "/api/v1/admin/favicon/reset", nil, token); code != 200 {
+		t.Fatalf("restore favicon: %d", code)
+	}
+	if data, err := os.ReadFile(s.faviconPath); err != nil || !bytes.Equal(data, testFaviconBytes(1)) {
+		t.Fatalf("restored favicon: err=%v bytes=%d", err, len(data))
 	}
 	code, article := call(t, h, "POST", "/api/v1/admin/articles", map[string]any{"title": "Draft", "status": "draft"}, token)
 	if code != 201 {
@@ -460,15 +498,25 @@ func TestCleanInstallAssetsAndCRUD(t *testing.T) {
 	}
 }
 
-func TestNormalizeSiteSettingRejectsInvalidFavicon(t *testing.T) {
-	for _, favicon := range []string{"https://example.com/favicon.ico", "data:image/svg+xml;base64,PHN2Zz4=", "data:image/png;base64,YWJj"} {
-		raw, err := json.Marshal(map[string]any{"favicon": favicon})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, ok := normalizeSiteSetting(raw); ok {
-			t.Errorf("accepted invalid favicon %q", favicon)
-		}
+func TestNormalizeSiteSettingDropsLegacyFavicon(t *testing.T) {
+	raw, err := json.Marshal(map[string]any{"favicon": "legacy", "name": "iBlog"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	normalized, ok := normalizeSiteSetting(raw)
+	if !ok || strings.Contains(string(normalized), "favicon") {
+		t.Fatalf("legacy favicon was not removed: ok=%v value=%s", ok, normalized)
+	}
+}
+
+func TestNormalizeFaviconWrapsPNGAsICO(t *testing.T) {
+	pngData, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := normalizeFavicon(pngData)
+	if !ok || !validFavicon(got) || !bytes.Equal(got[22:], pngData) {
+		t.Fatalf("PNG was not preserved in a valid ICO container: ok=%v bytes=%d", ok, len(got))
 	}
 }
 

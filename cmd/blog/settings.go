@@ -1,41 +1,10 @@
 package main
 
 import (
-	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"strings"
 )
-
-const maxFaviconBytes = 128 << 10
-
-func parseFaviconDataURL(value string) ([]byte, string, bool) {
-	value = strings.TrimSpace(value)
-	comma := strings.IndexByte(value, ',')
-	if !strings.HasPrefix(value, "data:") || comma < 6 || !strings.Contains(value[:comma], ";base64") {
-		return nil, "", false
-	}
-	mime := strings.TrimSuffix(strings.TrimPrefix(value[:comma], "data:"), ";base64")
-	if mime != "image/x-icon" && mime != "image/vnd.microsoft.icon" && mime != "image/png" {
-		return nil, "", false
-	}
-	decoded, err := base64.StdEncoding.DecodeString(value[comma+1:])
-	if err != nil || len(decoded) == 0 || len(decoded) > maxFaviconBytes {
-		return nil, "", false
-	}
-	switch mime {
-	case "image/x-icon", "image/vnd.microsoft.icon":
-		if len(decoded) < 6 || !bytes.Equal(decoded[:4], []byte{0, 0, 1, 0}) || decoded[4] == 0 && decoded[5] == 0 {
-			return nil, "", false
-		}
-	case "image/png":
-		if len(decoded) < 8 || !bytes.Equal(decoded[:8], []byte{137, 80, 78, 71, 13, 10, 26, 10}) {
-			return nil, "", false
-		}
-	}
-	return decoded, mime, true
-}
 
 func (s *server) publicSiteSetting(raw json.RawMessage) json.RawMessage {
 	var site map[string]json.RawMessage
@@ -71,7 +40,7 @@ func (s *server) settings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/v1/admin/") {
-		writeJSON(w, 200, map[string]any{"settings": map[string]any{"about": m["about"], "contacts": m["contacts"], "site": m["site"]}})
+		writeJSON(w, 200, map[string]any{"settings": map[string]any{"about": m["about"], "contacts": m["contacts"], "site": s.publicSiteSetting(m["site"])}})
 		return
 	}
 	if raw, ok := m["site"]; ok {
@@ -110,28 +79,13 @@ func (s *server) saveSetting(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) favicon(w http.ResponseWriter, r *http.Request) {
-	var raw string
-	err := s.db.QueryRowContext(r.Context(), "SELECT value_json FROM site_settings WHERE setting_key='site'").Scan(&raw)
-	if err == nil {
-		var site map[string]json.RawMessage
-		if json.Unmarshal([]byte(raw), &site) == nil {
-			var value string
-			if json.Unmarshal(site["favicon"], &value) == nil {
-				if data, mime, ok := parseFaviconDataURL(value); ok {
-					w.Header().Set("Cache-Control", "no-cache")
-					w.Header().Set("Content-Type", mime)
-					w.WriteHeader(http.StatusOK)
-					_, _ = w.Write(data)
-					return
-				}
-			}
-		}
+	w.Header().Set("Cache-Control", "no-cache")
+	if r.URL.Path == "/default-favicon.ico" {
+		r.URL.Path = "/default-favicon.ico"
+		serveSPA(w, r, s.webDist, "/default-favicon.ico")
+		return
 	}
-	root := s.webDist
-	if r.URL.Path == "/admin/favicon.ico" {
-		root = s.adminDist
-	}
-	serveSPA(w, r, root, "/favicon.ico")
+	http.ServeFile(w, r, s.activeFaviconPath())
 }
 
 // normalizeSiteSetting keeps the site object extensible while validating the
@@ -142,20 +96,11 @@ func normalizeSiteSetting(raw json.RawMessage) (json.RawMessage, bool) {
 	if err := json.Unmarshal(raw, &site); err != nil {
 		return nil, false
 	}
-	if value, present := site["favicon"]; present {
-		var favicon string
-		if err := json.Unmarshal(value, &favicon); err != nil {
-			return nil, false
-		}
-		if strings.TrimSpace(favicon) == "" {
-			delete(site, "favicon")
-		} else if _, _, ok := parseFaviconDataURL(favicon); !ok {
-			return nil, false
-		}
-	}
+	delete(site, "favicon")
 	value, present := site["url"]
 	if !present {
-		return raw, true
+		encoded, err := json.Marshal(site)
+		return encoded, err == nil
 	}
 	var siteURL string
 	if err := json.Unmarshal(value, &siteURL); err != nil {

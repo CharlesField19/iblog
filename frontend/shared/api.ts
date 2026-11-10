@@ -20,6 +20,7 @@ export async function request<T = unknown>(
   { method = 'GET', body, signal }: RequestOptions = {},
 ): Promise<T> {
   let response
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 15000)
   const abortFromCaller = () => controller.abort(signal?.reason)
@@ -31,9 +32,9 @@ export async function request<T = unknown>(
       credentials: 'same-origin',
       headers: {
         Accept: 'application/json',
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(body === undefined || isFormData ? {} : { 'Content-Type': 'application/json' }),
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(body === undefined ? {} : { body: isFormData ? body : JSON.stringify(body) }),
       signal: controller.signal,
     })
   } catch (error) {

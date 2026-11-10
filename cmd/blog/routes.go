@@ -17,7 +17,7 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 503, map[string]string{"status": "unhealthy"})
 		return
 	}
-	writeJSON(w, 200, map[string]string{"status": "ok", "version": "1.1.9"})
+	writeJSON(w, 200, map[string]string{"status": "ok", "version": "1.1.10"})
 }
 func (s *server) robots(w http.ResponseWriter, r *http.Request) {
 	base := s.canonicalBaseURL(r)
@@ -170,6 +170,10 @@ func (s *server) adminHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			http.NotFound(w, r)
 		}
+	case p == "/api/v1/admin/favicon" && r.Method == http.MethodPost:
+		s.saveFavicon(w, r)
+	case p == "/api/v1/admin/favicon/reset" && r.Method == http.MethodPost:
+		s.restoreFavicon(w, r)
 	case p == "/api/v1/admin/settings":
 		if r.Method == "GET" {
 			s.settings(w, r)
@@ -224,6 +228,7 @@ func (s *server) routes() http.Handler {
 	})
 	mux.HandleFunc("GET /favicon.ico", s.favicon)
 	mux.HandleFunc("GET /admin/favicon.ico", s.favicon)
+	mux.HandleFunc("GET /default-favicon.ico", s.favicon)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.NotFound(w, r)

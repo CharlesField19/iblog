@@ -13,6 +13,8 @@ const contacts = reactive({ email: '', github: '', x: '', telegram: '' })
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
+const selectedFavicon = ref<File | null>(null)
+const restoreFaviconPending = ref(false)
 const site = reactive({
   name: 'iBlog',
   url: '',
@@ -21,7 +23,6 @@ const site = reactive({
   subtitle: 'Code · Life · Ideas',
   footerName: 'Chenghao',
   footerText: '用代码与热爱搭建',
-  favicon: '',
 })
 const faviconPreview = ref('/favicon.ico')
 async function load() {
@@ -44,10 +45,9 @@ async function load() {
       subtitle: 'Code · Life · Ideas',
       footerName: 'Chenghao',
       footerText: '用代码与热爱搭建',
-      favicon: '',
       ...(data.settings?.site || {}),
     })
-    faviconPreview.value = site.favicon || '/favicon.ico'
+    faviconPreview.value = `/favicon.ico?preview=${Date.now()}`
   } catch (e) {
     error.value = errorMessage(e)
   } finally {
@@ -59,7 +59,7 @@ function selectFavicon(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
-  if (!['image/x-icon', 'image/vnd.microsoft.icon', 'image/png'].includes(file.type)) {
+  if (!/\.(ico|png)$/i.test(file.name)) {
     toast('error', t('admin.settings.faviconType'))
     input.value = ''
     return
@@ -69,18 +69,14 @@ function selectFavicon(event: Event) {
     input.value = ''
     return
   }
-  const reader = new FileReader()
-  reader.onload = () => {
-    if (typeof reader.result !== 'string') return
-    site.favicon = reader.result
-    faviconPreview.value = reader.result
-  }
-  reader.onerror = () => toast('error', t('admin.settings.faviconReadFailed'))
-  reader.readAsDataURL(file)
+  selectedFavicon.value = file
+  restoreFaviconPending.value = false
+  faviconPreview.value = URL.createObjectURL(file)
 }
 function resetFavicon() {
-  site.favicon = ''
-  faviconPreview.value = '/favicon.ico'
+  selectedFavicon.value = null
+  restoreFaviconPending.value = true
+  faviconPreview.value = `/default-favicon.ico?preview=${Date.now()}`
 }
 async function save() {
   const email = contacts.email.trim()
@@ -114,6 +110,16 @@ async function save() {
         body: Object.fromEntries(Object.entries(site).map(([k, v]) => [k, v.trim()])),
       }),
     ])
+    if (selectedFavicon.value) {
+      const body = new FormData()
+      body.append('file', selectedFavicon.value)
+      await adminRequest('/api/v1/admin/favicon', { method: 'POST', body })
+      selectedFavicon.value = null
+    } else if (restoreFaviconPending.value) {
+      await adminRequest('/api/v1/admin/favicon/reset', { method: 'POST' })
+      restoreFaviconPending.value = false
+    }
+    faviconPreview.value = `/favicon.ico?updated=${Date.now()}`
     document.title = site.name.trim() || 'iBlog'
     toast('success', t('admin.settings.saved'))
   } catch (e) {

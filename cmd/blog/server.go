@@ -10,6 +10,9 @@ import (
 type server struct {
 	db                    *sql.DB
 	webDist, adminDist    string
+	faviconPath           string
+	faviconActivePath     string
+	faviconDefaultPath    string
 	loginMu               sync.Mutex
 	loginFailures         map[string]loginFailure
 	viewMu                sync.Mutex

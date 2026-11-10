@@ -64,7 +64,13 @@ func main() {
 	if err = migrate(db); err != nil {
 		log.Fatal(err)
 	}
-	app := &server{db: db, webDist: env("BLOG_WEB_DIST", "./frontend/web/dist"), adminDist: env("BLOG_ADMIN_DIST", "./frontend/admin/dist")}
+	webDist := env("BLOG_WEB_DIST", "./frontend/web/dist")
+	app := &server{db: db, webDist: webDist, adminDist: env("BLOG_ADMIN_DIST", "./frontend/admin/dist"),
+		faviconPath: filepath.Join(dataDir, "favicon.ico"), faviconActivePath: filepath.Join(webDist, "favicon.ico"),
+		faviconDefaultPath: filepath.Join(webDist, "default-favicon.ico")}
+	if err = app.ensureFaviconFiles(); err != nil {
+		log.Fatal(err)
+	}
 	if err = validateProductionConfig(app); err != nil {
 		logEvent("error", "invalid production configuration", map[string]any{"error": err.Error()})
 		log.Fatal(err)
