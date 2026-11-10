@@ -244,6 +244,21 @@
   .tag-unused {
     @apply bg-hover text-subtle;
   }
+  .friend-modal-backdrop {
+    @apply fixed inset-0 z-[3000] flex items-center justify-center bg-[#0008] p-5 backdrop-blur-[6px];
+  }
+  .friend-modal {
+    @apply m-0 max-h-[min(720px,calc(100dvh-40px))] w-[min(480px,100%)] overflow-y-auto p-[26px] shadow-raised;
+  }
+  .friend-modal-head {
+    @apply flex items-start justify-between gap-4;
+  }
+  .friend-modal-head .form-title {
+    @apply mb-5;
+  }
+  .friend-modal-close {
+    @apply -mr-2 -mt-2 grid size-9 flex-none place-items-center rounded-full border-0 bg-transparent text-2xl leading-none text-subtle hover:bg-hover hover:text-ink;
+  }
   .tag-form,
   .friend-form {
     @apply mb-[18px];
@@ -569,6 +584,12 @@
     .form-card,
     .section-card {
       @apply p-5;
+    }
+    .friend-modal-backdrop {
+      @apply p-3;
+    }
+    .friend-modal {
+      @apply max-h-[calc(100dvh-24px)];
     }
   }
   @media (width <= 560px) {

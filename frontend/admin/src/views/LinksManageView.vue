@@ -15,6 +15,7 @@ const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
 const editId = ref<number | null>(null)
+const formOpen = ref(false)
 const blank = () => ({ name: '', url: '', avatar: '', description: '', sortOrder: 0 })
 function safeHref(value: string) {
   try {
@@ -28,6 +29,15 @@ const form = reactive(blank())
 function reset() {
   Object.assign(form, blank())
   editId.value = null
+}
+function openCreate() {
+  reset()
+  formOpen.value = true
+}
+function closeForm() {
+  if (saving.value) return
+  formOpen.value = false
+  reset()
 }
 async function load() {
   loading.value = true
@@ -43,6 +53,7 @@ async function load() {
 onMounted(load)
 function edit(item: Friend) {
   editId.value = item.id
+  formOpen.value = true
   Object.assign(form, {
     name: item.name,
     url: item.url,
@@ -81,6 +92,7 @@ async function save() {
       },
     )
     toast('success', editId.value ? t('admin.links.saved') : t('admin.links.added'))
+    formOpen.value = false
     reset()
     await load()
   } catch (e) {
@@ -111,77 +123,106 @@ async function remove(item: Friend) {
   <main id="admin-content" class="admin-main" tabindex="-1">
     <div class="list-head">
       <h1>{{ t('admin.links.title') }}</h1>
+      <button class="btn" type="button" @click="openCreate">{{ t('admin.links.add') }}</button>
     </div>
-    <form class="card form-card friend-form" @submit.prevent="save">
-      <h2 class="form-title">{{ editId ? t('admin.links.save') : t('admin.links.add') }}</h2>
-      <div class="field-row">
+    <div
+      v-if="formOpen"
+      class="friend-modal-backdrop"
+      role="presentation"
+      @click.self="closeForm"
+      @keydown.esc="closeForm"
+    >
+      <form
+        class="card form-card friend-form friend-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="friend-modal-title"
+        @submit.prevent="save"
+      >
+        <div class="friend-modal-head">
+          <h2 id="friend-modal-title" class="form-title">
+            {{ editId ? t('admin.links.save') : t('admin.links.add') }}
+          </h2>
+          <button
+            class="friend-modal-close"
+            type="button"
+            :aria-label="t('admin.common.cancel')"
+            :disabled="saving"
+            @click="closeForm"
+          >
+            ×
+          </button>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="friend-name">{{ t('admin.links.name') }}</label
+            ><input
+              id="friend-name"
+              v-model="form.name"
+              name="name"
+              maxlength="100"
+              :placeholder="t('admin.links.namePlaceholder')"
+              autofocus
+              required
+            />
+          </div>
+          <div class="field">
+            <label for="friend-url">{{ t('admin.links.url') }}</label
+            ><input
+              id="friend-url"
+              v-model="form.url"
+              name="url"
+              type="url"
+              placeholder="https://example.com…"
+              required
+            />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="friend-avatar">{{ t('admin.links.avatar') }}</label
+            ><input
+              id="friend-avatar"
+              v-model="form.avatar"
+              name="avatar"
+              type="url"
+              maxlength="2048"
+              :placeholder="t('admin.links.avatarPlaceholder')"
+            />
+          </div>
+          <div class="field">
+            <label for="friend-sort">{{ t('admin.links.sort') }}</label
+            ><input id="friend-sort" v-model.number="form.sortOrder" name="sortOrder" type="number" />
+          </div>
+        </div>
         <div class="field">
-          <label for="friend-name">{{ t('admin.links.name') }}</label
+          <label for="friend-description">{{ t('admin.links.intro') }}</label
           ><input
-            id="friend-name"
-            v-model="form.name"
-            name="name"
-            maxlength="100"
-            :placeholder="t('admin.links.namePlaceholder')"
-            required
+            id="friend-description"
+            v-model="form.description"
+            name="description"
+            maxlength="1000"
+            :placeholder="t('admin.links.introPlaceholder')"
           />
         </div>
-        <div class="field">
-          <label for="friend-url">{{ t('admin.links.url') }}</label
-          ><input
-            id="friend-url"
-            v-model="form.url"
-            name="url"
-            type="url"
-            placeholder="https://example.com…"
-            required
-          />
+        <div class="form-actions">
+          <button class="btn" type="submit" :disabled="saving">
+            <LoadingState v-if="saving" variant="inline" />
+            <span>{{
+              saving
+                ? editId
+                  ? t('admin.common.saving')
+                  : t('admin.links.adding')
+                : editId
+                  ? t('admin.links.save')
+                  : t('admin.links.add')
+            }}</span></button
+          ><button class="btn btn-secondary" type="button" :disabled="saving" @click="closeForm">
+            {{ t('admin.common.cancel') }}
+          </button>
         </div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label for="friend-avatar">{{ t('admin.links.avatar') }}</label
-          ><input
-            id="friend-avatar"
-            v-model="form.avatar"
-            name="avatar"
-            type="url"
-            maxlength="2048"
-            :placeholder="t('admin.links.avatarPlaceholder')"
-          />
-        </div>
-        <div class="field">
-          <label for="friend-sort">{{ t('admin.links.sort') }}</label
-          ><input id="friend-sort" v-model.number="form.sortOrder" name="sortOrder" type="number" />
-        </div>
-      </div>
-      <div class="field">
-        <label for="friend-description">{{ t('admin.links.intro') }}</label
-        ><input
-          id="friend-description"
-          v-model="form.description"
-          name="description"
-          maxlength="1000"
-          :placeholder="t('admin.links.introPlaceholder')"
-        />
-      </div>
-      <div class="form-actions">
-        <button class="btn" type="submit" :disabled="saving">
-          <LoadingState v-if="saving" variant="inline" />
-          <span>{{
-            saving
-              ? editId
-                ? t('admin.common.saving')
-                : t('admin.links.adding')
-              : editId
-                ? t('admin.links.save')
-                : t('admin.links.add')
-          }}</span></button
-        ><button v-if="editId" class="btn btn-secondary" type="button" @click="reset">
-          {{ t('admin.common.cancel') }}
-        </button>
-      </div>
-    </form>
+      </form>
+    </div>
     <p v-if="error" class="card error-card" role="alert">
       {{ error }} <button class="link-btn" @click="load">{{ t('admin.common.retry') }}</button>
     </p>
