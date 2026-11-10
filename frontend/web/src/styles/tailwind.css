@@ -76,7 +76,7 @@
   .social-icons svg.social-icon-x {
     @apply fill-current stroke-none;
   }
-  /* 视觉是一条约 32x2 的细线，命中区仍保持 44x44。 */
+  /* 蓝色呼吸指引线，命中区仍保持 44x44。 */
   .hero-scroll-cue {
     @apply absolute bottom-6 left-1/2 grid size-11 -translate-x-1/2 place-items-center text-muted transition-colors;
   }
@@ -84,19 +84,10 @@
     content: '';
     display: block;
     width: 40px;
-    height: 3px;
+    height: 4px;
     border-radius: 999px;
-    background: currentColor;
+    background: #0a84ff;
     animation: hero-cue-breathe 2.8s ease-in-out infinite;
-    transition:
-      width 220ms ease,
-      background-color 220ms ease;
-  }
-  .hero-scroll-cue:hover {
-    @apply text-accent;
-  }
-  .hero-scroll-cue:hover::before {
-    width: 48px;
   }
   .hero-scroll-cue.is-hidden {
     opacity: 0;
@@ -550,10 +541,16 @@
 @keyframes hero-cue-breathe {
   0%,
   100% {
-    opacity: 0.4;
+    opacity: 0.48;
+    transform: translateY(4px);
+    box-shadow: 0 0 5px rgba(10, 132, 255, 0.45);
   }
   50% {
     opacity: 1;
+    transform: translateY(-8px);
+    box-shadow:
+      0 0 22px rgba(10, 132, 255, 0.95),
+      0 0 44px rgba(10, 132, 255, 0.34);
   }
 }
 
@@ -648,9 +645,9 @@ html.home-snap #latest-articles {
   content: '';
   display: block;
   width: 40px;
-  height: 3px;
+  height: 4px;
   border-radius: 999px;
-  background: currentColor;
+  background: #0a84ff;
   animation: hero-cue-breathe 2.8s ease-in-out infinite;
 }
 #latest-articles {

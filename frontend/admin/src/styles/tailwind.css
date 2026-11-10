@@ -307,6 +307,9 @@
   .editor-grid {
     @apply mt-[18px] grid grid-cols-2 items-start gap-[18px];
   }
+  .editor-grid-single {
+    @apply grid-cols-1;
+  }
   .editor-pane {
     @apply mb-0 flex min-w-0 flex-col gap-2;
   }
@@ -316,6 +319,66 @@
   }
   .editor-pane .markdown-input {
     @apply h-[480px] min-h-[320px] flex-none resize-y overflow-auto font-mono text-[13.5px] leading-[1.65] [tab-size:2];
+  }
+  .word-editor {
+    @apply min-h-[480px] overflow-hidden rounded-[14px] border border-line bg-[var(--nav-bg)];
+  }
+  .word-toolbar {
+    @apply flex min-h-12 flex-wrap items-center gap-1 border-b border-line px-2 py-1.5;
+  }
+  .toolbar-select-label select,
+  .toolbar-button,
+  .mode-button {
+    @apply h-8 rounded-lg border border-transparent bg-transparent px-2 text-xs text-muted transition-colors;
+  }
+  .toolbar-select-label select {
+    @apply max-w-[92px] cursor-pointer outline-none;
+  }
+  .toolbar-button:hover,
+  .toolbar-button.active,
+  .mode-button:hover,
+  .mode-button[aria-pressed='true'] {
+    @apply border-line bg-hover text-ink;
+  }
+  .toolbar-button:focus-visible,
+  .mode-button:focus-visible,
+  .toolbar-select-label select:focus-visible {
+    @apply outline-2 outline-offset-1 outline-accent;
+  }
+  .toolbar-divider {
+    @apply mx-1 h-5 w-px bg-line;
+  }
+  .toolbar-spacer {
+    @apply flex-1;
+  }
+  .word-editor-content,
+  .markdown-source {
+    @apply h-[432px] min-h-[320px] overflow-y-auto;
+  }
+  .word-editor-content .tiptap,
+  .markdown-source {
+    @apply h-full p-5 text-[15px] leading-[1.8] outline-none;
+  }
+  .word-editor-content .tiptap :is(h1, h2, h3) {
+    @apply mt-[1em] mb-[0.5em] font-semibold;
+  }
+  .word-editor-content .tiptap > :first-child {
+    @apply mt-0;
+  }
+  .word-editor-content .tiptap blockquote {
+    @apply my-4 border-l-2 border-accent pl-4 text-muted;
+  }
+  .word-editor-content .tiptap pre {
+    @apply overflow-x-auto rounded-lg bg-hover p-4 font-mono text-[13px];
+  }
+  .word-editor-content .tiptap code {
+    @apply rounded bg-hover px-1 font-mono text-[13px];
+  }
+  .word-editor-content .tiptap a {
+    @apply text-accent underline;
+  }
+  .markdown-source {
+    @apply resize-y bg-transparent font-mono text-[13.5px] [tab-size:2];
   }
   .preview-scroll {
     @apply max-h-[720px] min-h-[480px] overflow-y-auto;

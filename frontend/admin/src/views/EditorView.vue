@@ -9,6 +9,7 @@ import { useToast, useConfirm } from '../injections'
 import { ApiError } from '../../../shared/api'
 import type { Tag, ArticleDetail } from '../../../shared/contracts'
 import LoadingState from '../../../shared/LoadingState.vue'
+import MarkdownEditor from '../components/MarkdownEditor.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -30,11 +31,7 @@ const error = ref('')
 const initialSlug = ref('')
 const initialStatus = ref('draft')
 const lastSavedAt = ref('')
-const previewHtml = ref('')
-let previewTimer: ReturnType<typeof setTimeout> | undefined
 let draftTimer: ReturnType<typeof setTimeout> | undefined
-let previewVersion = 0
-let previewController: AbortController | undefined
 const draftKey = `iblog-editor-draft-${id || 'new'}`
 const snapshot = () =>
   JSON.stringify({
@@ -90,28 +87,6 @@ function restoreDraft() {
       toast('info', t('admin.editor.draftAuto'))
     }
   } catch {}
-}
-function updatePreview() {
-  clearTimeout(previewTimer)
-  const version = ++previewVersion
-  previewController?.abort()
-  previewTimer = setTimeout(async () => {
-    const controller = new AbortController()
-    previewController = controller
-    try {
-      const result = await adminRequest<{ html: string }>('/api/v1/admin/markdown/preview', {
-        method: 'POST',
-        body: { contentMd: content.value || '' },
-        signal: controller.signal,
-      })
-      if (version === previewVersion) previewHtml.value = result.html
-    } catch (error) {
-      if (version === previewVersion && !controller.signal.aborted) {
-        previewHtml.value = ''
-        toast('error', errorMessage(error))
-      }
-    }
-  }, 180)
 }
 function persistDraft() {
   if (loading.value || !dirty.value) return
@@ -228,7 +203,6 @@ async function save() {
     saving.value = false
   }
 }
-watch(content, updatePreview)
 watch([title, slug, summary, content, status, tags], scheduleDraftPersist, { deep: true })
 onBeforeRouteLeave(async () => {
   if (dirty.value && !saving.value) {
@@ -245,14 +219,10 @@ function beforeUnload(event: BeforeUnloadEvent) {
 }
 onMounted(() => {
   window.addEventListener('beforeunload', beforeUnload)
-  updatePreview()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', beforeUnload)
-  clearTimeout(previewTimer)
   clearTimeout(draftTimer)
-  ++previewVersion
-  previewController?.abort()
 })
 </script>
 
@@ -385,25 +355,14 @@ onBeforeUnmount(() => {
           </div>
         </fieldset>
       </section>
-      <section class="editor-grid">
+      <section class="editor-grid editor-grid-single">
         <div class="field editor-pane">
-          <label for="article-content"
+          <label
             >{{ t('admin.editor.preview') }}
             <span class="field-counter"
               >{{ [...content].length.toLocaleString('zh-CN') }} / 200,000</span
             ></label
-          ><textarea
-            id="article-content"
-            v-model="content"
-            name="contentMd"
-            class="markdown-input"
-            placeholder="# Title&#10;&#10;Start writing in Markdown…"
-            required
-          ></textarea>
-        </div>
-        <div class="editor-pane">
-          <label>{{ t('admin.editor.preview') }}</label>
-          <div class="md-preview card preview-scroll" v-html="previewHtml"></div>
+          ><MarkdownEditor v-model="content" />
         </div>
       </section>
     </form>
