@@ -67,6 +67,7 @@ export interface SiteData {
   email: string
   socials: Record<string, string>
   url?: string
+  favicon?: string
 }
 
 export type ToastKind = 'success' | 'error' | 'info'

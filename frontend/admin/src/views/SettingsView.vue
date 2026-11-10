@@ -21,7 +21,9 @@ const site = reactive({
   subtitle: 'Code · Life · Ideas',
   footerName: 'Chenghao',
   footerText: '用代码与热爱搭建',
+  favicon: '',
 })
+const faviconPreview = ref('/favicon.ico')
 async function load() {
   loading.value = true
   error.value = ''
@@ -42,8 +44,10 @@ async function load() {
       subtitle: 'Code · Life · Ideas',
       footerName: 'Chenghao',
       footerText: '用代码与热爱搭建',
+      favicon: '',
       ...(data.settings?.site || {}),
     })
+    faviconPreview.value = site.favicon || '/favicon.ico'
   } catch (e) {
     error.value = errorMessage(e)
   } finally {
@@ -51,6 +55,33 @@ async function load() {
   }
 }
 onMounted(load)
+function selectFavicon(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  if (!['image/x-icon', 'image/vnd.microsoft.icon', 'image/png'].includes(file.type)) {
+    toast('error', t('admin.settings.faviconType'))
+    input.value = ''
+    return
+  }
+  if (file.size > 128 * 1024) {
+    toast('error', t('admin.settings.faviconSize'))
+    input.value = ''
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = () => {
+    if (typeof reader.result !== 'string') return
+    site.favicon = reader.result
+    faviconPreview.value = reader.result
+  }
+  reader.onerror = () => toast('error', t('admin.settings.faviconReadFailed'))
+  reader.readAsDataURL(file)
+}
+function resetFavicon() {
+  site.favicon = ''
+  faviconPreview.value = '/favicon.ico'
+}
 async function save() {
   const email = contacts.email.trim()
   if (email && !email.includes('@')) {
@@ -190,6 +221,22 @@ async function save() {
           :placeholder="t('admin.settings.footerTextPlaceholder')"
           autocomplete="off"
         />
+      </div>
+      <div class="field">
+        <label for="site-favicon">{{ t('admin.settings.favicon') }}</label>
+        <div class="favicon-setting">
+          <img :src="faviconPreview" alt="" width="48" height="48" />
+          <input
+            id="site-favicon"
+            type="file"
+            accept=".ico,.png,image/x-icon,image/vnd.microsoft.icon,image/png"
+            @change="selectFavicon"
+          />
+          <button class="link-btn" type="button" @click="resetFavicon">
+            {{ t('admin.settings.faviconReset') }}
+          </button>
+        </div>
+        <p class="field-hint">{{ t('admin.settings.faviconHint') }}</p>
       </div>
     </section>
     <section v-if="!loading && !error" class="card section-card">

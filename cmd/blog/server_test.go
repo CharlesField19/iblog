@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -415,6 +416,32 @@ func TestCleanInstallAssetsAndCRUD(t *testing.T) {
 	if code, settings = call(t, h, "GET", "/api/v1/admin/settings", nil, token); code != 200 || settings["settings"].(map[string]any)["site"].(map[string]any)["footerText"] != "Made with care" {
 		t.Fatalf("admin site settings: %d %v", code, settings)
 	}
+	icon := "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+	site["favicon"] = icon
+	if code, _ = call(t, h, "PUT", "/api/v1/admin/settings/site", site, token); code != 200 {
+		t.Fatalf("save favicon: %d", code)
+	}
+	expected, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest("GET", "/favicon.ico", nil)
+	recorder := httptest.NewRecorder()
+	h.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK || recorder.Header().Get("Content-Type") != "image/png" || !bytes.Equal(recorder.Body.Bytes(), expected) {
+		t.Fatalf("favicon: status=%d type=%q bytes=%d", recorder.Code, recorder.Header().Get("Content-Type"), recorder.Body.Len())
+	}
+	request = httptest.NewRequest("GET", "/admin/favicon.ico", nil)
+	recorder = httptest.NewRecorder()
+	h.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK || recorder.Header().Get("Content-Type") != "image/png" || !bytes.Equal(recorder.Body.Bytes(), expected) {
+		t.Fatalf("admin favicon: status=%d type=%q bytes=%d", recorder.Code, recorder.Header().Get("Content-Type"), recorder.Body.Len())
+	}
+	if code, settings = call(t, h, "GET", "/api/v1/settings", nil, ""); code != 200 {
+		t.Fatalf("public settings after favicon: %d", code)
+	} else if _, present := settings["site"].(map[string]any)["favicon"]; present {
+		t.Fatal("public settings exposed favicon data")
+	}
 	code, article := call(t, h, "POST", "/api/v1/admin/articles", map[string]any{"title": "Draft", "status": "draft"}, token)
 	if code != 201 {
 		t.Fatalf("draft create: %d %v", code, article)
@@ -430,6 +457,18 @@ func TestCleanInstallAssetsAndCRUD(t *testing.T) {
 	code, listing = call(t, h, "GET", "/api/v1/articles", nil, "")
 	if code != 200 || listing["total"].(float64) != 1 {
 		t.Fatalf("publish list: %d %v", code, listing)
+	}
+}
+
+func TestNormalizeSiteSettingRejectsInvalidFavicon(t *testing.T) {
+	for _, favicon := range []string{"https://example.com/favicon.ico", "data:image/svg+xml;base64,PHN2Zz4=", "data:image/png;base64,YWJj"} {
+		raw, err := json.Marshal(map[string]any{"favicon": favicon})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := normalizeSiteSetting(raw); ok {
+			t.Errorf("accepted invalid favicon %q", favicon)
+		}
 	}
 }
 

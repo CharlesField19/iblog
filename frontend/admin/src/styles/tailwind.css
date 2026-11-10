@@ -320,6 +320,15 @@
   .editor-pane .markdown-input {
     @apply h-[480px] min-h-[320px] flex-none resize-y overflow-auto font-mono text-[13.5px] leading-[1.65] [tab-size:2];
   }
+  .favicon-setting {
+    @apply flex flex-wrap items-center gap-3;
+  }
+  .favicon-setting img {
+    @apply rounded-lg border border-line bg-white object-contain p-1;
+  }
+  .favicon-setting input[type='file'] {
+    @apply min-w-0 max-w-full text-sm text-muted;
+  }
   .word-editor {
     @apply min-h-[480px] overflow-hidden rounded-[14px] border border-line bg-[var(--nav-bg)];
   }
