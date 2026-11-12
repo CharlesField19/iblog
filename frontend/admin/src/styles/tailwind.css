@@ -259,6 +259,12 @@
   .friend-modal-close {
     @apply -mr-2 -mt-2 grid size-9 flex-none place-items-center rounded-full border-0 bg-transparent text-2xl leading-none text-subtle hover:bg-hover hover:text-ink;
   }
+  .markdown-preview-modal {
+    @apply m-0 max-h-[min(760px,calc(100dvh-40px))] w-[min(760px,100%)] overflow-y-auto p-[26px] shadow-raised;
+  }
+  .markdown-preview-status {
+    @apply min-h-[240px] py-10 text-center text-muted;
+  }
   .tag-form,
   .friend-form {
     @apply mb-[18px];
