@@ -17,7 +17,7 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 503, map[string]string{"status": "unhealthy"})
 		return
 	}
-	writeJSON(w, 200, map[string]string{"status": "ok", "version": "1.1.13"})
+	writeJSON(w, 200, map[string]string{"status": "ok", "version": "1.1.14"})
 }
 func (s *server) robots(w http.ResponseWriter, r *http.Request) {
 	base := s.canonicalBaseURL(r)
