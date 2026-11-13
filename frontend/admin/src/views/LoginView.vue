@@ -64,7 +64,7 @@ async function submit() {
 </script>
 
 <template>
-  <main class="login-wrap">
+  <main id="admin-content" class="login-wrap" tabindex="-1">
     <section class="login-card">
       <h1>{{ setupRequired ? t('admin.login.setup') : t('admin.login.title') }}</h1>
       <p v-if="setupRequired" class="setup-copy">{{ t('admin.login.firstUse') }}</p>
@@ -79,6 +79,8 @@ async function submit() {
             autocomplete="username"
             spellcheck="false"
             :placeholder="t('admin.login.usernamePlaceholder')"
+            :aria-invalid="error ? 'true' : undefined"
+            :aria-describedby="error ? 'login-error' : undefined"
             required
           />
         </div>
@@ -96,10 +98,12 @@ async function submit() {
               setupRequired ? t('admin.login.minPassword') : t('admin.login.passwordPlaceholder')
             "
             :minlength="setupRequired ? 8 : undefined"
+            :aria-invalid="error ? 'true' : undefined"
+            :aria-describedby="error ? 'login-error' : undefined"
             required
           />
         </div>
-        <p v-if="error" class="login-error" role="alert">{{ error }}</p>
+        <p v-if="error" id="login-error" class="login-error" role="alert">{{ error }}</p>
         <button class="btn login-btn" :disabled="loading">
           <LoadingState v-if="loading" variant="inline" />
           <span>{{

@@ -118,30 +118,40 @@ onBeforeUnmount(() => {
   </section>
   <section class="section" v-reveal>
     <div class="page-container article-list-container">
-      <label class="search-box"
-        ><span class="search-icon" aria-hidden="true">⌕</span
-        ><input
-          v-model="search"
-          type="search"
-          :placeholder="t('web.searchPlaceholder')"
-          :aria-label="t('web.searchLabel')"
-          autocomplete="off"
-        /><button
-          v-if="search"
-          class="search-clear"
-          type="button"
-          :aria-label="t('web.clearSearch')"
-          @click="search = ''"
-        >
-          ×
-        </button></label
-      >
+      <search class="search-region">
+        <form class="search-box" @submit.prevent>
+          <span class="search-icon" aria-hidden="true">⌕</span>
+          <input
+            v-model="search"
+            type="search"
+            name="q"
+            :placeholder="t('web.searchPlaceholder')"
+            :aria-label="t('web.searchLabel')"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="none"
+            spellcheck="false"
+            enterkeyhint="search"
+          />
+          <button
+            v-if="search"
+            class="search-clear"
+            type="button"
+            :aria-label="t('web.clearSearch')"
+            @click="search = ''"
+          >
+            ×
+          </button>
+        </form>
+      </search>
       <div v-if="tags.length" class="skill-list filter-tags">
         <button
           v-for="tag in tags"
           :key="tag.name"
           class="chip"
+          type="button"
           :class="{ selected: selected === tag.name }"
+          :aria-pressed="selected === tag.name"
           @click="select(tag.name)"
         >
           {{ tag.name }} <span class="tag-count">{{ tag.count }}</span>
@@ -150,14 +160,19 @@ onBeforeUnmount(() => {
       <div v-if="loading" class="post-list"><PostCardSkeleton v-for="i in 4" :key="i" /></div>
       <div v-else-if="error" role="alert">
         <p>{{ error }}</p>
-        <button class="btn" @click="load()">{{ t('web.retry') }}</button>
+        <button class="btn" type="button" @click="load()">{{ t('web.retry') }}</button>
       </div>
       <div v-else-if="posts.length" class="post-list">
         <PostCard v-for="post in posts" :key="post.id" :post="post" />
       </div>
       <div v-if="!loading && !error && !posts.length" class="empty-state">
         <p>{{ search || selected ? t('web.noMatches') : t('web.noArticlesYet') }}</p>
-        <button v-if="search || selected" class="btn btn-secondary" @click="clearFilters">
+        <button
+          v-if="search || selected"
+          class="btn btn-secondary"
+          type="button"
+          @click="clearFilters"
+        >
           {{ t('web.clearFilters') }}
         </button>
       </div>
@@ -166,6 +181,7 @@ onBeforeUnmount(() => {
         ><button
           v-if="hasMore"
           class="btn btn-secondary"
+          type="button"
           :disabled="loading"
           @click="load({ append: true })"
         >

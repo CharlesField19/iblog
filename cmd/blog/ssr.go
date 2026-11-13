@@ -88,6 +88,7 @@ var ssrTemplate = template.Must(template.New("ssr").Funcs(template.FuncMap{
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f5f5f7">
+  <meta name="color-scheme" content="light dark">
   <meta name="description" content="{{.Page.Description}}">
   <meta name="robots" content="{{.Page.Robots}}">
   <meta property="og:site_name" content="{{.Page.SiteName}}">

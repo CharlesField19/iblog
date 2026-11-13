@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { errorMessage } from '../../../shared/i18n'
-import { onMounted, reactive, ref } from 'vue'
+import { nextTick, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminRequest } from '../api'
 import type { Friend } from '../../../shared/contracts'
@@ -16,6 +16,7 @@ const saving = ref(false)
 const error = ref('')
 const editId = ref<number | null>(null)
 const formOpen = ref(false)
+const formDialog = ref<HTMLDialogElement | null>(null)
 const blank = () => ({ name: '', url: '', avatar: '', description: '', sortOrder: 0 })
 function safeHref(value: string) {
   try {
@@ -30,14 +31,39 @@ function reset() {
   Object.assign(form, blank())
   editId.value = null
 }
+function showForm() {
+  formOpen.value = true
+  void nextTick(() => {
+    const dialog = formDialog.value
+    if (dialog && !dialog.open) dialog.showModal()
+  })
+}
 function openCreate() {
   reset()
-  formOpen.value = true
+  showForm()
 }
 function closeForm() {
   if (saving.value) return
+  formDialog.value?.close()
+}
+function onFormCancel(event: Event) {
+  if (saving.value) event.preventDefault()
+}
+function onFormClosed() {
   formOpen.value = false
   reset()
+}
+// Backdrop clicks are not native light dismiss here: saving must not lose the form.
+function onFormBackdrop(event: MouseEvent) {
+  const dialog = formDialog.value
+  if (!dialog || saving.value || event.target !== dialog) return
+  const rect = dialog.getBoundingClientRect()
+  const outside =
+    event.clientX < rect.left ||
+    event.clientX > rect.right ||
+    event.clientY < rect.top ||
+    event.clientY > rect.bottom
+  if (outside) closeForm()
 }
 async function load() {
   loading.value = true
@@ -53,7 +79,6 @@ async function load() {
 onMounted(load)
 function edit(item: Friend) {
   editId.value = item.id
-  formOpen.value = true
   Object.assign(form, {
     name: item.name,
     url: item.url,
@@ -61,6 +86,7 @@ function edit(item: Friend) {
     description: item.description,
     sortOrder: item.sortOrder,
   })
+  showForm()
 }
 async function save() {
   if (!form.name.trim() || !form.url.trim()) {
@@ -92,8 +118,7 @@ async function save() {
       },
     )
     toast('success', editId.value ? t('admin.links.saved') : t('admin.links.added'))
-    formOpen.value = false
-    reset()
+    formDialog.value?.close()
     await load()
   } catch (e) {
     toast('error', errorMessage(e))
@@ -125,20 +150,16 @@ async function remove(item: Friend) {
       <h1>{{ t('admin.links.title') }}</h1>
       <button class="btn" type="button" @click="openCreate">{{ t('admin.links.add') }}</button>
     </div>
-    <div
+    <dialog
       v-if="formOpen"
-      class="friend-modal-backdrop"
-      role="presentation"
-      @click.self="closeForm"
-      @keydown.esc="closeForm"
+      ref="formDialog"
+      class="card form-card friend-form friend-modal"
+      aria-labelledby="friend-modal-title"
+      @cancel="onFormCancel"
+      @close="onFormClosed"
+      @click="onFormBackdrop"
     >
-      <form
-        class="card form-card friend-form friend-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="friend-modal-title"
-        @submit.prevent="save"
-      >
+      <form @submit.prevent="save">
         <div class="friend-modal-head">
           <h2 id="friend-modal-title" class="form-title">
             {{ editId ? t('admin.links.save') : t('admin.links.add') }}
@@ -192,7 +213,12 @@ async function remove(item: Friend) {
           </div>
           <div class="field">
             <label for="friend-sort">{{ t('admin.links.sort') }}</label
-            ><input id="friend-sort" v-model.number="form.sortOrder" name="sortOrder" type="number" />
+            ><input
+              id="friend-sort"
+              v-model.number="form.sortOrder"
+              name="sortOrder"
+              type="number"
+            />
           </div>
         </div>
         <div class="field">
@@ -222,9 +248,10 @@ async function remove(item: Friend) {
           </button>
         </div>
       </form>
-    </div>
+    </dialog>
     <p v-if="error" class="card error-card" role="alert">
-      {{ error }} <button class="link-btn" @click="load">{{ t('admin.common.retry') }}</button>
+      {{ error }}
+      <button class="link-btn" type="button" @click="load">{{ t('admin.common.retry') }}</button>
     </p>
     <div v-else-if="loading" class="card">
       <LoadingState variant="card" :label="t('admin.common.loading')" />
@@ -259,8 +286,9 @@ async function remove(item: Friend) {
           </p>
         </div>
         <div class="row-actions">
-          <button class="link-btn" @click="edit(item)">{{ t('admin.links.edit') }}</button
-          ><button class="link-btn danger" @click="remove(item)">
+          <button class="link-btn" type="button" @click="edit(item)">
+            {{ t('admin.links.edit') }}</button
+          ><button class="link-btn danger" type="button" @click="remove(item)">
             {{ t('admin.common.delete') }}
           </button>
         </div>

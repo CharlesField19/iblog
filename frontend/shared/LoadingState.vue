@@ -31,8 +31,9 @@ onBeforeUnmount(() => {
     v-if="visible"
     class="loading-state"
     :class="`loading-state--${variant}`"
-    role="status"
-    aria-live="polite"
+    :role="variant === 'inline' ? undefined : 'progressbar'"
+    :aria-label="variant === 'inline' ? undefined : label || undefined"
+    :aria-hidden="variant === 'inline' ? 'true' : undefined"
   >
     <span class="loading-ring" aria-hidden="true"></span>
     <span v-if="label" class="loading-label">{{ label }}</span>

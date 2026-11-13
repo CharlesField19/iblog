@@ -21,7 +21,7 @@ docker compose pull
 docker compose up -d
 ```
 
-Compose 默认使用 `latest`，拉取并启动时会使用最近发布的镜像。希望固定版本时，只需把 `compose.yaml` 中 `image` 的 `:latest` 改成对应发布 tag，例如 `:v1.1.12`；升级或回滚时修改同一处即可。仓库根目录没有额外的 `.env` 版本变量。
+Compose 默认使用 `latest`，拉取并启动时会使用最近发布的镜像。希望固定版本时，只需把 `compose.yaml` 中 `image` 的 `:latest` 改成对应发布 tag，例如 `:v1.1.13`；升级或回滚时修改同一处即可。仓库根目录没有额外的 `.env` 版本变量。
 
 站点容器默认只绑定宿主机 `127.0.0.1:11190`，管理入口位于 `/admin/`。默认值（`BLOG_COOKIE_SECURE=false` + `http://127.0.0.1:11190`）就是本机 HTTP 预览，可直接 `docker compose up -d`。生产环境请设置 `BLOG_PUBLIC_ORIGIN=https://你的域名` 并把 `BLOG_COOKIE_SECURE` 改为 `true`，由 HTTPS 反向代理提供访问：
 

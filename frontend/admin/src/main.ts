@@ -15,6 +15,7 @@ import './styles/tailwind.css'
 
 const router = createRouter({
   history: createWebHistory('/admin/'),
+  scrollBehavior: () => ({ top: 0 }),
   routes: [
     { path: '/login', component: LoginView },
     { path: '/', component: DashboardView },

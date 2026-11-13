@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { clearSession } from './session'
@@ -45,22 +45,34 @@ const confirmDialog = ref<{
   title: string
   resolve: (value: boolean) => void
 } | null>(null)
+const confirmEl = ref<HTMLDialogElement | null>(null)
 function confirmAction(message: string, title = t('confirmDefault')) {
   return new Promise<boolean>((resolve) => {
     confirmDialog.value?.resolve(false)
     confirmDialog.value = { message, title, resolve }
-    requestAnimationFrame(() =>
-      document.querySelector<HTMLButtonElement>('.confirm-dialog button')?.focus(),
-    )
+    void nextTick(() => {
+      const dialog = confirmEl.value
+      if (!dialog) return
+      if (!dialog.open) dialog.showModal()
+    })
   })
 }
 function finishConfirm(value: boolean) {
   const current = confirmDialog.value
   confirmDialog.value = null
   current?.resolve(value)
+  confirmEl.value?.close()
+}
+// Esc and the platform back gesture close the dialog; resolve as "cancelled".
+function onConfirmClose() {
+  if (!confirmDialog.value) return
+  finishConfirm(false)
 }
 provide('toast', toast)
 provide('confirmAction', confirmAction)
+function isNavActive(to: string) {
+  return to === '/' ? route.path === '/' : route.path.startsWith(to)
+}
 const nav = computed(() => [
   ['/', t('admin.nav.articles')],
   ['/links', t('admin.nav.links')],
@@ -99,7 +111,8 @@ async function logout() {
             v-for="[to, label] in nav"
             :key="to"
             class="nav-tab"
-            :class="{ active: to === '/' ? route.path === '/' : route.path.startsWith(to) }"
+            :class="{ active: isNavActive(to) }"
+            :aria-current="isNavActive(to) ? 'page' : undefined"
             :to="to"
             >{{ label }}</RouterLink
           >
@@ -141,7 +154,7 @@ async function logout() {
   <a class="skip-link" href="#admin-content">{{ $t('skipToContent') }}</a>
   <div class="app-page"><RouterView /></div>
   <div class="toast-host" aria-live="polite" aria-atomic="false">
-    <div v-for="item in notices" :key="item.id" class="toast" :class="item.kind" role="status">
+    <div v-for="item in notices" :key="item.id" class="toast" :class="item.kind">
       <span class="toast-icon" aria-hidden="true">{{
         item.kind === 'success' ? '✓' : item.kind === 'error' ? '!' : 'i'
       }}</span
@@ -156,20 +169,18 @@ async function logout() {
       </button>
     </div>
   </div>
-  <div v-if="confirmDialog" class="confirm-backdrop" @keydown.esc="finishConfirm(false)">
-    <section
-      class="confirm-dialog"
-      role="dialog"
-      aria-modal="true"
-      :aria-label="confirmDialog.title"
-    >
-      <h2>{{ confirmDialog.title }}</h2>
-      <p>{{ confirmDialog.message }}</p>
-      <div class="confirm-actions">
-        <button class="btn btn-secondary" type="button" @click="finishConfirm(false)">
-          {{ t('admin.cancel') }}</button
-        ><button class="btn" type="button" @click="finishConfirm(true)">{{ t('admin.ok') }}</button>
-      </div>
-    </section>
-  </div>
+  <dialog
+    ref="confirmEl"
+    class="confirm-dialog"
+    aria-labelledby="confirm-dialog-title"
+    @close="onConfirmClose"
+  >
+    <h2 id="confirm-dialog-title">{{ confirmDialog?.title || t('confirmDefault') }}</h2>
+    <p>{{ confirmDialog?.message }}</p>
+    <div class="confirm-actions">
+      <button class="btn btn-secondary" type="button" autofocus @click="finishConfirm(false)">
+        {{ t('admin.cancel') }}</button
+      ><button class="btn" type="button" @click="finishConfirm(true)">{{ t('admin.ok') }}</button>
+    </div>
+  </dialog>
 </template>

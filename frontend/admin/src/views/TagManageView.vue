@@ -111,7 +111,8 @@ async function remove(item: Tag) {
       </form>
     </section>
     <p v-if="error" class="card error-card" role="alert">
-      {{ error }} <button class="link-btn" @click="load">{{ t('admin.common.retry') }}</button>
+      {{ error }}
+      <button class="link-btn" type="button" @click="load">{{ t('admin.common.retry') }}</button>
     </p>
     <div v-else-if="loading" class="card">
       <LoadingState variant="card" :label="t('admin.common.loading')" />
@@ -127,7 +128,7 @@ async function remove(item: Tag) {
                 class="chip-input"
                 maxlength="24"
                 :aria-label="t('admin.tags.editName')"
-              /><button class="btn btn-sm">{{ t('admin.common.save') }}</button
+              /><button class="btn btn-sm" type="submit">{{ t('admin.common.save') }}</button
               ><button class="btn btn-secondary btn-sm" type="button" @click="editId = null">
                 {{ t('admin.common.cancel') }}
               </button>
@@ -140,8 +141,9 @@ async function remove(item: Tag) {
           >
         </div>
         <div v-if="editId !== item.id" class="row-actions">
-          <button class="link-btn" @click="startEdit(item)">{{ t('admin.tags.edit') }}</button
-          ><button class="link-btn danger" @click="remove(item)">
+          <button class="link-btn" type="button" @click="startEdit(item)">
+            {{ t('admin.tags.edit') }}</button
+          ><button class="link-btn danger" type="button" @click="remove(item)">
             {{ t('admin.common.delete') }}
           </button>
         </div>

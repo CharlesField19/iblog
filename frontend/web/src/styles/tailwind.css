@@ -176,6 +176,9 @@
   .filter-tags .chip {
     @apply flex-none;
   }
+  .search-region {
+    @apply block;
+  }
   .search-box {
     @apply relative flex items-center gap-3 rounded-2xl border border-line bg-surface px-[18px] py-3.5 transition;
   }

@@ -133,7 +133,8 @@ function scrollHandler() {
   showTop.value = window.scrollY > 420
 }
 function scrollTop() {
-  window.scrollTo({ top: 0, behavior: 'smooth' })
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' })
 }
 async function shareArticle() {
   if (!post.value) return
