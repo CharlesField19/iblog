@@ -6,7 +6,7 @@ on:
       tag:
         description: 'Release tag to publish'
         required: true
-        default: 'v1.1.14'
+        default: 'v1.1.15'
 
 permissions:
   contents: read
